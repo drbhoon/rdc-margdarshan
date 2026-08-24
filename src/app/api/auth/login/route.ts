@@ -19,8 +19,8 @@ export async function POST(req: NextRequest) {
       employee = await prisma.employee.create({
         data: {
           employeeCode: 'EMP001',
-          name: 'Radhika Sen',
-          email: 'radhika.sen@corp.com',
+          name: 'Puja Singh',
+          email: 'puja.singh@rdc.in',
           role: 'ADMIN',
           department: 'HR, L&D & Operational Excellence',
           designation: 'Head of L&D and Operational Excellence',

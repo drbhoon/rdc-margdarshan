@@ -4,8 +4,8 @@ import { prisma } from '@/lib/db';
 
 const DEFAULT_ADMIN = {
   employeeCode: 'EMP001',
-  name: 'Radhika Sen',
-  email: 'radhika.sen@corp.com',
+  name: 'Puja Singh',
+  email: 'puja.singh@rdc.in',
   role: 'ADMIN' as const,
   department: 'HR, L&D & Operational Excellence',
   designation: 'Head of L&D and Operational Excellence',

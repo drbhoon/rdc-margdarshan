@@ -26,10 +26,10 @@ async function main() {
   await prisma.employee.create({
     data: {
       employeeCode: 'EMP001',
-      name: 'Radhika Sen',
-      email: 'radhika.sen@corp.com',
+      name: 'Puja Singh',
+      email: 'puja.singh@rdc.in',
       department: 'HR, L&D & Operational Excellence',
-      designation: 'Head of Leadership Development',
+      designation: 'Head of L&D and Operational Excellence',
       joinDate: new Date('2020-01-15'),
       role: 'ADMIN',
     },

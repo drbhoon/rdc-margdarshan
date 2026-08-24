@@ -578,7 +578,7 @@ export default function DashboardPage() {
                 className="bg-transparent border-none text-xs font-semibold text-slate-800 cursor-pointer focus:outline-none pr-1"
               >
                 <option value="" disabled>Switch Persona...</option>
-                <option value="EMP001">👑 Radhika Sen (Admin)</option>
+                <option value="EMP001">👑 Puja Singh (Admin)</option>
                 {dashboardData?.allEmployees?.map((e: any) => (
                   <option key={e.employeeCode} value={e.employeeCode}>
                     {e.role === 'MENTOR' ? '👔' : '🌱'} {e.name} ({e.role} - {e.employeeCode})
@@ -1660,7 +1660,7 @@ export default function DashboardPage() {
               </div>
 
               <p className="text-xs text-slate-600 leading-relaxed">
-                This will wipe all existing test pairs, session logs, notes, and candidate entries so you can start completely from scratch. <strong>Radhika Sen (Admin)</strong> will be preserved.
+                This will wipe all existing test pairs, session logs, notes, and candidate entries so you can start completely from scratch. <strong>Puja Singh (Admin)</strong> will be preserved.
               </p>
 
               <div className="flex justify-end gap-2 pt-3 border-t">

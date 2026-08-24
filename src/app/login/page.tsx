@@ -92,7 +92,7 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full text-left px-4 py-2 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 transition-all flex justify-between items-center"
             >
-              <span>Radhika Sen (Head of L&D & Operational Excellence)</span>
+              <span>Puja Singh (Head of L&D & Operational Excellence)</span>
               <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">ADMIN</span>
             </button>
             <button

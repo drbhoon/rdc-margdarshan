@@ -274,7 +274,7 @@ export default function OnboardingPage() {
                 className="text-xs bg-white border border-slate-300 rounded px-2 py-1 font-semibold text-slate-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-500"
               >
                 <option value="" disabled>Switch Persona...</option>
-                <option value="EMP001">👑 Radhika Sen (Admin)</option>
+                <option value="EMP001">👑 Puja Singh (Admin)</option>
                 <option value="EMP101">👔 Amit Sharma (Mentor)</option>
                 <option value="EMP102">👔 Priya Patel (Mentor)</option>
                 <option value="EMP201">🌱 Aarav Mehta (Mentee)</option>

@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
       await prisma.mentoringPair.deleteMany();
       await prisma.cohort.deleteMany();
 
-      // Delete all employees EXCEPT Radhika Sen (Admin)
+      // Delete all employees EXCEPT Puja Singh (Admin)
       await prisma.employee.deleteMany({
         where: {
           employeeCode: { not: 'EMP001' },
@@ -84,19 +84,19 @@ export async function POST(req: NextRequest) {
       await prisma.employee.upsert({
         where: { employeeCode: 'EMP001' },
         update: {
-          name: 'Radhika Sen',
-          email: 'radhika.sen@corp.com',
+          name: 'Puja Singh',
+          email: 'puja.singh@rdc.in',
           role: 'ADMIN',
           department: 'HR, L&D & Operational Excellence',
-          designation: 'Head of Leadership Development',
+          designation: 'Head of L&D and Operational Excellence',
         },
         create: {
           employeeCode: 'EMP001',
-          name: 'Radhika Sen',
-          email: 'radhika.sen@corp.com',
+          name: 'Puja Singh',
+          email: 'puja.singh@rdc.in',
           role: 'ADMIN',
           department: 'HR, L&D & Operational Excellence',
-          designation: 'Head of Leadership Development',
+          designation: 'Head of L&D and Operational Excellence',
           joinDate: new Date('2020-01-01'),
           isConsentShared: true,
           topics: [],
