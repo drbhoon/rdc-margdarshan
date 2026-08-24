@@ -1,22 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { prisma, ensureDatabaseSchema } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { COMPETENCY_MATRIX, Competency } from '@/lib/competencies';
 
 export async function POST() {
   try {
+    await ensureDatabaseSchema();
     const session = await getSession();
     if (session && session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Unauthorized. Admin access required.' }, { status: 401 });
     }
 
-    // Get matching cohort
-    const cohort = await prisma.cohort.findFirst({
+    // Get matching cohort or auto-create a rolling 3-month cohort
+    let cohort = await prisma.cohort.findFirst({
       where: { status: 'MATCHING' },
     });
 
     if (!cohort) {
-      return NextResponse.json({ error: 'No cohort currently in MATCHING state.' }, { status: 400 });
+      const now = new Date();
+      const threeMonthsLater = new Date();
+      threeMonthsLater.setMonth(now.getMonth() + 3);
+
+      cohort = await prisma.cohort.create({
+        data: {
+          name: 'Rolling 3-Month Mentoring Program (2026)',
+          startDate: now,
+          endDate: threeMonthsLater,
+          status: 'MATCHING',
+        },
+      });
     }
 
     // Delete existing pairings for this cohort to prevent duplicate pairing collisions
