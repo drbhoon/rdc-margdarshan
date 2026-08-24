@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { prisma, ensureDatabaseSchema } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
 export async function GET() {
   try {
+    await ensureDatabaseSchema();
     const session = await getSession();
     const role = session?.role || 'ADMIN';
     const employeeCode = session?.employeeCode || 'EMP001';

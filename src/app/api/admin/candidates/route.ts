@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { prisma, ensureDatabaseSchema } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
 // GET: List all candidate employees
 export async function GET() {
   try {
+    await ensureDatabaseSchema();
     const session = await getSession();
     if (session && session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 401 });
@@ -25,6 +26,7 @@ export async function GET() {
 // POST: Add a single candidate or bulk candidates
 export async function POST(req: NextRequest) {
   try {
+    await ensureDatabaseSchema();
     const session = await getSession();
     if (session && session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 401 });
