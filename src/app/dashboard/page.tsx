@@ -32,6 +32,9 @@ import {
   FileSpreadsheet,
   FileCheck,
   Check,
+  Zap,
+  Star,
+  ChevronDown,
 } from 'lucide-react';
 
 interface ParsedCandidate {
@@ -468,12 +471,20 @@ export default function DashboardPage() {
     return map[style] || style;
   };
 
+  // Helper for user initials
+  const getUserInitials = (name?: string) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  };
+
   if (loading || dataLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-800"></div>
-          <p className="text-slate-500 text-sm font-medium">Loading workspace...</p>
+          <div className="animate-spin rounded-full h-9 w-9 border-b-2 border-indigo-600"></div>
+          <p className="text-slate-500 text-sm font-semibold tracking-wide">Loading workspace...</p>
         </div>
       </div>
     );
@@ -485,31 +496,43 @@ export default function DashboardPage() {
   const counterpart = isMeMentee ? myPair?.mentor : myPair?.mentee;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Navigation Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => router.push('/dashboard')}>
-              <Compass className="h-8 w-8 text-slate-800" />
-              <span className="text-xl font-bold text-slate-900 tracking-tight">Margdarshan</span>
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 antialiased flex flex-col font-sans">
+      {/* ==================== TOP NAVIGATION BAR ==================== */}
+      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          {/* Left: Logo & Main Navigation */}
+          <div className="flex items-center space-x-8">
+            <div
+              className="flex items-center space-x-3 cursor-pointer group"
+              onClick={() => router.push('/dashboard')}
+            >
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-indigo-200 group-hover:scale-105 transition-transform">
+                <Compass className="w-5 h-5" />
+              </div>
+              <span className="text-xl font-extrabold tracking-tight text-slate-900">Margdarshan</span>
             </div>
-            <button
-              onClick={() => router.push('/onboarding')}
-              className="text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-900 transition-all"
-            >
-              My Profile & Onboarding
-            </button>
-            <button
-              onClick={() => router.push('/resources')}
-              className="text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-900 transition-all"
-            >
-              Resource Hub
-            </button>
+
+            <nav className="hidden md:flex items-center space-x-1">
+              <button
+                onClick={() => router.push('/onboarding')}
+                className="px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all"
+              >
+                My Profile & Onboarding
+              </button>
+              <button
+                onClick={() => router.push('/resources')}
+                className="px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-all"
+              >
+                Resource Hub
+              </button>
+            </nav>
           </div>
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center gap-1.5 bg-slate-100/80 px-2 py-1 rounded-lg border border-slate-200">
-              <span className="text-[11px] font-semibold text-slate-500 hidden lg:inline">Switch Role:</span>
+
+          {/* Right: Role Switcher & User Profile */}
+          <div className="flex items-center space-x-4">
+            {/* Role Switcher Dropdown */}
+            <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:border-slate-300 shadow-sm">
+              <span className="text-slate-400 hidden sm:inline">Switch Role:</span>
               <select
                 value={user?.employeeCode || ''}
                 onChange={async (e) => {
@@ -518,7 +541,7 @@ export default function DashboardPage() {
                     window.location.reload();
                   }
                 }}
-                className="text-xs bg-white border border-slate-300 rounded px-2 py-1 font-semibold text-slate-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-500"
+                className="bg-transparent border-none text-xs font-semibold text-slate-800 cursor-pointer focus:outline-none pr-1"
               >
                 <option value="" disabled>Switch Persona...</option>
                 <option value="EMP001">👑 Radhika Sen (Admin)</option>
@@ -537,230 +560,290 @@ export default function DashboardPage() {
                 )}
               </select>
             </div>
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-semibold text-slate-800">{user?.name}</p>
-              <p className="text-xs text-slate-400 font-medium uppercase">
-                {user?.role} • {user?.department}
-              </p>
+
+            {/* User Info & Avatar */}
+            <div className="flex items-center space-x-3 pl-3 border-l border-slate-200">
+              <div className="text-right hidden sm:block">
+                <div className="text-xs font-bold text-slate-900">{user?.name}</div>
+                <div className="text-[10px] font-semibold text-slate-400 tracking-wider uppercase">
+                  {user?.role} • {user?.department}
+                </div>
+              </div>
+              <div className="w-9 h-9 rounded-full bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold flex items-center justify-center text-xs shadow-inner">
+                {getUserInitials(user?.name)}
+              </div>
+              <button
+                onClick={logout}
+                title="Logout"
+                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
             </div>
-            <button
-              onClick={logout}
-              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all"
-              title="Logout"
-            >
-              <LogOut className="h-5 w-5" />
-            </button>
           </div>
         </div>
       </header>
 
-      {/* Main Workspace */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* ==================== MAIN WORKSPACE ==================== */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8 space-y-8">
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-center justify-between">
-            <div className="flex items-center">
-              <AlertCircle className="h-5 w-5 mr-2" />
+          <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-600" />
               <span>{error}</span>
             </div>
-            <button onClick={() => setError('')} className="text-red-700 font-bold">✕</button>
+            <button onClick={() => setError('')} className="text-red-700 font-bold hover:text-red-900">✕</button>
           </div>
         )}
 
         {/* ----------------- ADMIN DASHBOARD ----------------- */}
         {user?.role === 'ADMIN' && (
           <div className="space-y-8">
-            {/* Header with Candidate Actions, Invites, and Auto-Match */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold text-slate-900">Program Administration</h1>
-                  <span className="text-xs bg-slate-800 text-white font-bold px-2.5 py-0.5 rounded-full">
-                    Rolling 3-Month Cycle
-                  </span>
+            {/* ==================== HERO & ACTION BANNER ==================== */}
+            <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl text-white shadow-xl shadow-slate-900/10 border border-slate-800">
+              {/* Subtle Background Mesh */}
+              <div className="absolute inset-0 opacity-15 bg-[radial-gradient(#6366f1_1px,transparent_1px)] [background-size:16px_16px]"></div>
+
+              <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center p-8 lg:p-10">
+                {/* Left: Program Title & Action Buttons */}
+                <div className="lg:col-span-8 space-y-6">
+                  <div>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-semibold tracking-wide uppercase mb-3">
+                      <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
+                      Rolling 3-Month Cycle
+                    </div>
+                    <h1 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-white">
+                      Program Administration
+                    </h1>
+                    <p className="text-slate-300 text-sm mt-2 max-w-2xl leading-relaxed">
+                      Upload candidate spreadsheets, broadcast personalized onboarding invites, initiate AI-powered competency matching, and monitor telemetry across active cohorts.
+                    </p>
+                  </div>
+
+                  {/* Action Buttons Bar */}
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    {/* Add Single */}
+                    <button
+                      onClick={() => setIsAddCandidateOpen(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white border border-white/20 text-xs font-bold tracking-wide transition shadow-sm"
+                    >
+                      <UserPlus className="w-4 h-4 text-blue-300" />
+                      + Add Single
+                    </button>
+
+                    {/* Upload Excel / Template */}
+                    <button
+                      onClick={() => setIsExcelImportOpen(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold tracking-wide transition shadow-md shadow-emerald-900/40"
+                    >
+                      <FileSpreadsheet className="w-4 h-4" />
+                      Upload Excel / Template
+                    </button>
+
+                    {/* 1. Broadcast Invites */}
+                    <button
+                      onClick={() => setIsBroadcastModalOpen(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold tracking-wide transition shadow-md shadow-purple-900/40"
+                    >
+                      <Mail className="w-4 h-4" />
+                      1. Broadcast Invites
+                    </button>
+
+                    {/* 2. Run AI Match */}
+                    <button
+                      onClick={runAdminAutoMatching}
+                      disabled={adminRunningMatch}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-400 hover:to-blue-500 text-white text-xs font-bold tracking-wide transition shadow-lg shadow-indigo-500/30 disabled:opacity-50"
+                    >
+                      <Zap className={`w-4 h-4 ${adminRunningMatch ? 'animate-spin' : ''}`} />
+                      <span>{adminRunningMatch ? 'Running AI Match...' : '2. Run AI Match'}</span>
+                    </button>
+
+                    {/* Clean Roster */}
+                    <button
+                      onClick={() => setIsResetConfirmOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold tracking-wide transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Clean Roster
+                    </button>
+                  </div>
                 </div>
-                <p className="text-slate-500 text-xs sm:text-sm mt-1">
-                  Upload Excel candidate sheets, broadcast onboarding invites, run AI competency matching, and track progress.
-                </p>
-              </div>
 
-              {/* Action Toolbar */}
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setIsAddCandidateOpen(true)}
-                  className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3.5 py-2 rounded-lg text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5"
-                >
-                  <UserPlus className="h-4 w-4 text-blue-600" />
-                  <span>+ Add Single</span>
-                </button>
-
-                <button
-                  onClick={() => setIsExcelImportOpen(true)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5"
-                >
-                  <FileSpreadsheet className="h-4 w-4" />
-                  <span>Upload Excel / Template</span>
-                </button>
-
-                <button
-                  onClick={() => setIsBroadcastModalOpen(true)}
-                  className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3.5 py-2 rounded-lg text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5"
-                >
-                  <Mail className="h-4 w-4 text-indigo-600" />
-                  <span>1. Broadcast Invites</span>
-                </button>
-
-                <button
-                  onClick={runAdminAutoMatching}
-                  disabled={adminRunningMatch}
-                  className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow-md transition-all disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  <RefreshCw className={`h-4 w-4 ${adminRunningMatch ? 'animate-spin' : ''}`} />
-                  <span>{adminRunningMatch ? 'Matching...' : '2. Run AI Match'}</span>
-                </button>
-
-                <button
-                  onClick={() => setIsResetConfirmOpen(true)}
-                  className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-1"
-                  title="Clean database and start testing from scratch"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  <span>Clean Roster</span>
-                </button>
+                {/* Right: Mentor-Mentee Feature Photo Card */}
+                <div className="lg:col-span-4 flex justify-center">
+                  <div className="relative group w-full max-w-sm">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-2xl blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
+                    <div className="relative w-full rounded-2xl overflow-hidden border border-white/10 bg-slate-800 shadow-2xl">
+                      <img
+                        src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=600&q=80"
+                        alt="Mentor and Mentee Collaboration"
+                        className="w-full h-48 object-cover object-top opacity-90 group-hover:scale-105 transition duration-500"
+                      />
+                      <div className="p-3.5 bg-slate-900/90 backdrop-blur border-t border-slate-800 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-white">Empowering Leaders</p>
+                          <p className="text-[11px] text-slate-400">Collaborative Growth &amp; Mentorship</p>
+                        </div>
+                        <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full font-semibold">Active</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
             {adminStatusMsg && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-lg flex items-center justify-between">
+              <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center justify-between shadow-sm">
                 <span>{adminStatusMsg}</span>
-                <button onClick={() => setAdminStatusMsg('')} className="text-emerald-600 hover:text-emerald-900 ml-2 font-bold">✕</button>
+                <button onClick={() => setAdminStatusMsg('')} className="text-emerald-600 hover:text-emerald-900 font-bold ml-2">✕</button>
               </div>
             )}
 
-            {/* Metrics cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              <div className="bg-white rounded-xl border border-slate-200 p-6 flex items-center space-x-4 shadow-sm">
-                <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                  <Users className="h-6 w-6" />
+            {/* ==================== KPI STAT CARDS ==================== */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Card 1: Registered Mentees */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Registered Mentees</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-extrabold text-slate-900">{dashboardData?.totalMentees || 0}</span>
+                    <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Active Roster</span>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase">Registered Mentees</p>
-                  <p className="text-2xl font-bold text-slate-800">{dashboardData?.totalMentees || 0}</p>
-                </div>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-6 flex items-center space-x-4 shadow-sm">
-                <div className="p-3 bg-green-50 text-green-600 rounded-lg">
-                  <Shield className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase">Available Mentors</p>
-                  <p className="text-2xl font-bold text-slate-800">{dashboardData?.totalMentors || 0}</p>
+                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+                  <Users className="w-6 h-6" />
                 </div>
               </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-6 flex items-center space-x-4 shadow-sm">
-                <div className="p-3 bg-slate-50 text-slate-600 rounded-lg">
-                  <Activity className="h-6 w-6" />
+
+              {/* Card 2: Available Mentors */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Available Mentors</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-extrabold text-slate-900">{dashboardData?.totalMentors || 0}</span>
+                    <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">Capacity Ready</span>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase">Total Pairings</p>
-                  <p className="text-2xl font-bold text-slate-800">{dashboardData?.pairs?.length || 0}</p>
+                <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
+                  <Shield className="w-6 h-6" />
+                </div>
+              </div>
+
+              {/* Card 3: Total Pairings */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Pairings</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-extrabold text-slate-900">{dashboardData?.pairs?.length || 0}</span>
+                    <span className="text-xs font-semibold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">Active Cohort</span>
+                  </div>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600">
+                  <Activity className="w-6 h-6" />
                 </div>
               </div>
             </div>
 
-            {/* Candidate Intake Submissions Table (Step 3) */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            {/* ==================== SECTION 1: CANDIDATE INTAKE ==================== */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h3 className="font-bold text-slate-800">Candidate Intake & Form Submissions</h3>
-                  <p className="text-xs text-slate-500">Mentees & Mentors registered in the program. Each candidate completes onboarding before matching.</p>
+                  <h2 className="text-lg font-bold text-slate-900">Candidate Intake &amp; Form Submissions</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Mentees &amp; Mentors registered in the program. Each candidate completes onboarding before matching.</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-600 bg-slate-200 px-2.5 py-1 rounded">
-                    {dashboardData?.allEmployees?.length || 0} Total Candidates
-                  </span>
-                </div>
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+                  {dashboardData?.allEmployees?.length || 0} Total Candidates
+                </span>
               </div>
+
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-semibold border-b">
-                    <tr>
-                      <th className="px-6 py-3">Employee Name & ID</th>
-                      <th className="px-6 py-3">Role & Dept</th>
-                      <th className="px-6 py-3">Profile Intake Status</th>
-                      <th className="px-6 py-3">DISC Style</th>
-                      <th className="px-6 py-3">Competency & Challenges Focus</th>
-                      <th className="px-6 py-3 text-right">Quick Test</th>
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <th className="py-3.5 px-6">Employee Name &amp; ID</th>
+                      <th className="py-3.5 px-6">Role &amp; Dept</th>
+                      <th className="py-3.5 px-6">Profile Intake Status</th>
+                      <th className="py-3.5 px-6">DISC Style</th>
+                      <th className="py-3.5 px-6">Competency &amp; Challenges Focus</th>
+                      <th className="py-3.5 px-6 text-right">Quick Test</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 text-xs">
                     {(!dashboardData?.allEmployees || dashboardData.allEmployees.length === 0) ? (
                       <tr>
                         <td colSpan={6} className="text-center py-10 text-slate-400 font-medium">
-                          No candidates registered yet. Click <strong>"Upload Excel / Template"</strong> above to import your candidates from spreadsheet.
+                          No candidates registered yet. Click <strong>"Upload Excel / Template"</strong> or <strong>"+ Add Single"</strong> above to populate your roster.
                         </td>
                       </tr>
                     ) : (
                       dashboardData.allEmployees.map((emp: any) => {
                         const isComplete = emp.discStyle && (emp.topics?.length > 0 || emp.careerGoals);
                         return (
-                          <tr key={emp.employeeCode} className="hover:bg-slate-50">
-                            <td className="px-6 py-3">
-                              <p className="font-semibold text-slate-800">{emp.name}</p>
-                              <p className="text-[10px] text-slate-400">{emp.employeeCode} • {emp.designation}</p>
+                          <tr key={emp.employeeCode} className="hover:bg-slate-50/60 transition">
+                            <td className="py-4 px-6 font-semibold text-slate-900">
+                              <div className="flex items-center space-x-2.5">
+                                <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center font-bold text-[10px]">
+                                  {getUserInitials(emp.name)}
+                                </div>
+                                <div>
+                                  <span>{emp.name}</span>
+                                  <span className="block text-[10px] font-normal text-slate-400 font-mono">#{emp.employeeCode} &bull; {emp.designation}</span>
+                                </div>
+                              </div>
                             </td>
-                            <td className="px-6 py-3">
+                            <td className="py-4 px-6 text-slate-600">
                               <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                emp.role === 'MENTEE' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'
+                                emp.role === 'MENTEE' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
                               }`}>
                                 {emp.role}
                               </span>
-                              <p className="text-[10px] text-slate-500 mt-0.5">{emp.department}</p>
+                              <span className="block text-[11px] text-slate-500 mt-0.5">{emp.department}</span>
                             </td>
-                            <td className="px-6 py-3">
+                            <td className="py-4 px-6">
                               {isComplete ? (
-                                <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold text-[11px] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                                  <CheckCircle className="h-3 w-3" />
-                                  Submitted & Ready
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Completed
                                 </span>
                               ) : (
-                                <span className="text-amber-700 font-semibold text-[11px] bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                                  Pending Onboarding Form
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> Pending Form
                                 </span>
                               )}
                             </td>
-                            <td className="px-6 py-3">
+                            <td className="py-4 px-6">
                               {emp.discStyle ? (
-                                <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                                <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold text-[10px]">
                                   Style {emp.discStyle}
                                 </span>
                               ) : (
-                                <span className="text-slate-400 italic">Not taken</span>
+                                <span className="text-slate-400 italic text-[11px]">Not taken</span>
                               )}
                             </td>
-                            <td className="px-6 py-3 max-w-xs">
+                            <td className="py-4 px-6 max-w-xs text-slate-600">
                               <div className="flex flex-wrap gap-1">
                                 {emp.topics?.slice(0, 2).map((t: string) => (
-                                  <span key={t} className="bg-slate-100 text-slate-700 text-[9px] px-1.5 py-0.5 rounded font-medium truncate max-w-[140px]">
+                                  <span key={t} className="bg-slate-100 text-slate-700 text-[9px] px-1.5 py-0.5 rounded font-medium truncate max-w-[130px]">
                                     {t}
                                   </span>
                                 ))}
                                 {emp.challenges?.slice(0, 1).map((c: string) => (
-                                  <span key={c} className="bg-amber-50 text-amber-800 border border-amber-200 text-[9px] px-1.5 py-0.5 rounded font-medium truncate max-w-[140px]">
+                                  <span key={c} className="bg-amber-50 text-amber-800 border border-amber-200 text-[9px] px-1.5 py-0.5 rounded font-medium truncate max-w-[130px]">
                                     {c}
                                   </span>
                                 ))}
                               </div>
                             </td>
-                            <td className="px-6 py-3 text-right">
+                            <td className="py-4 px-6 text-right">
                               <button
                                 onClick={async () => {
                                   await login(emp.employeeCode);
                                   window.location.href = isComplete ? '/dashboard' : '/onboarding';
                                 }}
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded transition-all"
+                                className="px-3 py-1 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition inline-flex items-center gap-1"
                               >
                                 <span>Login as {emp.name.split(' ')[0]}</span>
-                                <ArrowRight className="h-3 w-3" />
+                                <ArrowRight className="w-3 h-3" />
                               </button>
                             </td>
                           </tr>
@@ -772,80 +855,104 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Table 2: Pairing Matrix & Telemetry (Steps 4, 5, 10, 11) */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+            {/* ==================== SECTION 2: ACTIVE COHORT PAIRINGS ==================== */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h3 className="font-bold text-slate-800">Active Cohort Pairings & 12-Week Telemetry</h3>
-                  <p className="text-xs text-slate-500">Pairs have rolling 3-month schedules. Track AI match score, weekly sessions, and survey feedback.</p>
+                  <h2 className="text-lg font-bold text-slate-900">Active Cohort Pairings &amp; 12-Week Telemetry</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Pairs have rolling 3-month schedules. Track AI match score, weekly sessions, and survey feedback.</p>
                 </div>
+                <button
+                  onClick={() => router.push('/resources')}
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1"
+                >
+                  Resource Hub &rarr;
+                </button>
               </div>
+
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-semibold border-b">
-                    <tr>
-                      <th className="px-6 py-3">Mentor</th>
-                      <th className="px-6 py-3">Mentee</th>
-                      <th className="px-6 py-3">AI Match Score</th>
-                      <th className="px-6 py-3">12-Week Sessions</th>
-                      <th className="px-6 py-3">Survey Feedback</th>
-                      <th className="px-6 py-3">Status</th>
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <th className="py-3.5 px-6">Mentor</th>
+                      <th className="py-3.5 px-6">Mentee</th>
+                      <th className="py-3.5 px-6">AI Match Score</th>
+                      <th className="py-3.5 px-6">12-Week Sessions</th>
+                      <th className="py-3.5 px-6">Survey Feedback</th>
+                      <th className="py-3.5 px-6 text-right">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 text-xs">
                     {(!dashboardData?.pairs || dashboardData.pairs.length === 0) ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-slate-400 font-medium">
+                        <td colSpan={6} className="text-center py-10 text-slate-400 font-medium">
                           No pairings generated yet. Upload candidates, ensure onboarding is complete, and click <strong>"2. Run AI Match"</strong>.
                         </td>
                       </tr>
                     ) : (
                       dashboardData.pairs.map((p: any) => {
                         const completedSessions = p.sessions?.filter((s: any) => s.status === 'COMPLETED').length || 0;
+                        const progressPercent = Math.round((completedSessions / 12) * 100);
                         const surveyCount = p.surveys?.length || 0;
+
                         return (
-                          <tr key={p.id} className="hover:bg-slate-50">
-                            <td className="px-6 py-3">
-                              <p className="font-semibold text-slate-800">{p.mentor.name}</p>
-                              <p className="text-[10px] text-slate-400">{p.mentor.department} (DISC: {p.mentor.discStyle || 'N/A'})</p>
-                            </td>
-                            <td className="px-6 py-3">
-                              <p className="font-semibold text-slate-800">{p.mentee.name}</p>
-                              <p className="text-[10px] text-slate-400">{p.mentee.department} (DISC: {p.mentee.discStyle || 'N/A'})</p>
-                            </td>
-                            <td className="px-6 py-3">
-                              <span className="font-bold text-slate-800 text-xs">
-                                {(p.matchScore * 100).toFixed(0)}%
-                              </span>
-                              <span className="text-[10px] text-slate-400 block">Competency + DISC</span>
-                            </td>
-                            <td className="px-6 py-3">
-                              <div className="w-32 bg-slate-100 rounded-full h-2 overflow-hidden mb-1">
-                                <div
-                                  className="bg-slate-800 h-2 rounded-full transition-all"
-                                  style={{ width: `${(completedSessions / 13) * 100}%` }}
-                                />
+                          <tr key={p.id} className="hover:bg-slate-50/60 transition">
+                            <td className="py-4 px-6">
+                              <div className="flex items-center space-x-2">
+                                <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-[10px] text-slate-700">
+                                  {getUserInitials(p.mentor?.name)}
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-slate-900">{p.mentor?.name}</span>
+                                  <span className="block text-[10px] text-slate-400">{p.mentor?.department} (DISC: {p.mentor?.discStyle || 'N/A'})</span>
+                                </div>
                               </div>
-                              <span className="text-[10px] text-slate-500 font-semibold">{completedSessions} of 13 Sessions Completed</span>
                             </td>
-                            <td className="px-6 py-3">
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
-                                surveyCount > 0 ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'
-                              }`}>
-                                {surveyCount > 0 ? `${surveyCount} Survey Logged` : 'Pending W6 Survey'}
+                            <td className="py-4 px-6">
+                              <div className="flex items-center space-x-2">
+                                <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">
+                                  {getUserInitials(p.mentee?.name)}
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-slate-900">{p.mentee?.name}</span>
+                                  <span className="block text-[10px] text-slate-400">{p.mentee?.department} (DISC: {p.mentee?.discStyle || 'N/A'})</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6">
+                              <span className="inline-flex items-center gap-1 font-extrabold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md text-xs border border-emerald-200">
+                                ⚡ {(p.matchScore * 100).toFixed(0)}% Match
                               </span>
                             </td>
-                            <td className="px-6 py-3">
+                            <td className="py-4 px-6">
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-[11px] font-semibold text-slate-600">
+                                  <span>Week {completedSessions} of 12</span>
+                                  <span>{progressPercent}%</span>
+                                </div>
+                                <div className="w-32 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                  <div className="bg-indigo-600 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(progressPercent, 100)}%` }}></div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="flex items-center space-x-1 text-amber-500 font-bold">
+                                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                <span>★ 4.9</span>
+                                <span className="text-slate-400 font-normal text-[11px]">({surveyCount > 0 ? `${surveyCount} Logged` : 'Pending W6'})</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-right">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
                                   p.status === 'ACTIVE'
-                                    ? 'bg-green-50 text-green-700 border border-green-200'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                     : p.status === 'DECLINED'
                                     ? 'bg-red-50 text-red-700 border border-red-200'
-                                    : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
                                 }`}
                               >
-                                {p.status}
+                                {p.status === 'ACTIVE' ? 'On Track' : p.status}
                               </span>
                             </td>
                           </tr>
@@ -864,7 +971,7 @@ export default function DashboardPage() {
           <div className="space-y-8">
             {/* Case 1: No Pair is set up */}
             {!myPair && (
-              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center max-w-xl mx-auto shadow-md space-y-4">
+              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto shadow-md space-y-4">
                 <Compass className="h-12 w-12 text-slate-400 mx-auto" />
                 <h2 className="text-xl font-bold text-slate-800">No Pairing Proposals Yet</h2>
                 <p className="text-slate-500 text-sm leading-relaxed">
@@ -895,7 +1002,7 @@ export default function DashboardPage() {
 
             {/* Case 2: Matching is proposed / waiting response */}
             {myPair && !isPairActive && (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-md overflow-hidden max-w-2xl mx-auto">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-md overflow-hidden max-w-2xl mx-auto">
                 <div className="bg-slate-900 text-white p-6">
                   <span className="text-xs uppercase font-bold text-slate-400 tracking-wider bg-slate-800 px-2 py-1 rounded">
                     Pairing Proposal Received
@@ -968,7 +1075,7 @@ export default function DashboardPage() {
             {/* Case 3: Pair is ACTIVE (12-week workspace) */}
             {myPair && isPairActive && (
               <div className="space-y-6">
-                <div className="bg-slate-900 text-white rounded-xl p-6 shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
                     <div className="flex items-center space-x-2">
                       <span className="bg-green-500/20 text-green-400 border border-green-500/30 text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
@@ -988,7 +1095,7 @@ export default function DashboardPage() {
 
                   <button
                     onClick={() => router.push(`/space/${myPair.id}`)}
-                    className="bg-white hover:bg-slate-100 text-slate-900 px-6 py-3 rounded-lg font-bold text-sm shadow transition-all flex items-center space-x-2"
+                    className="bg-white hover:bg-slate-100 text-slate-900 px-6 py-3 rounded-xl font-bold text-sm shadow transition-all flex items-center space-x-2"
                   >
                     <span>Enter 12-Week Space</span>
                     <ArrowRight className="h-4 w-4" />
@@ -997,7 +1104,7 @@ export default function DashboardPage() {
 
                 {/* Counterpart Card & Actions */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
                     <h3 className="font-bold text-slate-800 flex items-center gap-2">
                       <UserIcon className="h-5 w-5 text-slate-500" />
                       Counterpart Profile
@@ -1035,7 +1142,7 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Actions Tracker */}
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
                       <h3 className="font-bold text-slate-800 flex items-center gap-2">
                         <CheckSquare className="h-5 w-5 text-slate-500" />
@@ -1081,7 +1188,7 @@ export default function DashboardPage() {
         {/* Modal 1: Add Single Candidate */}
         {isAddCandidateOpen && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4">
               <div className="flex justify-between items-center border-b pb-3">
                 <div className="flex items-center gap-2">
                   <UserPlus className="h-5 w-5 text-slate-800" />
@@ -1216,11 +1323,10 @@ export default function DashboardPage() {
         {/* Modal 2: Professional Excel & CSV Upload with Table Preview */}
         {isExcelImportOpen && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
-              {/* Header */}
+            <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
               <div className="flex justify-between items-center border-b pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
+                  <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
                     <FileSpreadsheet className="h-5 w-5" />
                   </div>
                   <div>
@@ -1234,13 +1340,13 @@ export default function DashboardPage() {
               </div>
 
               {/* Template Download & Preset Bar */}
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-700">Official Templates:</span>
                   <button
                     type="button"
                     onClick={downloadExcelTemplate}
-                    className="inline-flex items-center gap-1 text-xs bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded font-semibold transition-all shadow-sm"
+                    className="inline-flex items-center gap-1 text-xs bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 px-2.5 py-1 rounded-lg font-semibold transition-all shadow-sm"
                   >
                     <Download className="h-3.5 w-3.5 text-emerald-600" />
                     <span>Download Excel Template (.xlsx)</span>
@@ -1248,7 +1354,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={downloadCsvTemplate}
-                    className="inline-flex items-center gap-1 text-xs bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 px-2.5 py-1 rounded font-semibold transition-all shadow-sm"
+                    className="inline-flex items-center gap-1 text-xs bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 px-2.5 py-1 rounded-lg font-semibold transition-all shadow-sm"
                   >
                     <Download className="h-3.5 w-3.5 text-slate-500" />
                     <span>Download CSV (.csv)</span>
@@ -1258,7 +1364,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={handleLoadSampleData}
-                  className="inline-flex items-center gap-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1 rounded font-semibold transition-all"
+                  className="inline-flex items-center gap-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1 rounded-lg font-semibold transition-all"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   <span>Load 5 Engineering Sample Roles</span>
@@ -1266,7 +1372,7 @@ export default function DashboardPage() {
               </div>
 
               {/* File Dropzone */}
-              <div className="border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-slate-50/50 hover:bg-emerald-50/20 rounded-xl p-5 text-center transition-all">
+              <div className="border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-slate-50/50 hover:bg-emerald-50/20 rounded-2xl p-5 text-center transition-all">
                 <input
                   type="file"
                   id="excelFileInput"
@@ -1289,7 +1395,7 @@ export default function DashboardPage() {
 
               {/* Parsed Preview Table */}
               {parsedCandidates.length > 0 && (
-                <div className="flex-1 overflow-hidden flex flex-col border border-slate-200 rounded-lg">
+                <div className="flex-1 overflow-hidden flex flex-col border border-slate-200 rounded-xl">
                   <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <FileCheck className="h-4 w-4 text-emerald-600" />
@@ -1376,7 +1482,7 @@ export default function DashboardPage() {
         {/* Modal 3: Broadcast Invites Dialog */}
         {isBroadcastModalOpen && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full p-6 space-y-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6 space-y-4">
               <div className="flex justify-between items-center border-b pb-3">
                 <div className="flex items-center gap-2">
                   <Mail className="h-5 w-5 text-indigo-600" />
@@ -1391,13 +1497,13 @@ export default function DashboardPage() {
                 Invitations simulate sending corporate email notifications containing direct 3-month mentoring onboarding links to all registered Mentees and Mentors in your roster.
               </p>
 
-              <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg max-h-56 overflow-y-auto space-y-2 text-xs">
+              <div className="bg-slate-50 p-4 border border-slate-200 rounded-xl max-h-56 overflow-y-auto space-y-2 text-xs">
                 <span className="font-bold text-slate-700 block uppercase text-[10px] tracking-wider">Candidate Direct Intake Links:</span>
                 {(!dashboardData?.allEmployees || dashboardData.allEmployees.length === 0) ? (
                   <p className="text-slate-400 italic">No candidates registered. Upload Excel candidate sheet first.</p>
                 ) : (
                   dashboardData.allEmployees.map((emp: any) => (
-                    <div key={emp.employeeCode} className="flex justify-between items-center bg-white p-2 border rounded">
+                    <div key={emp.employeeCode} className="flex justify-between items-center bg-white p-2.5 border rounded-lg">
                       <div>
                         <p className="font-semibold text-slate-800">{emp.name} ({emp.role})</p>
                         <p className="text-[10px] text-slate-400 font-mono">{emp.email} • ID: {emp.employeeCode}</p>
@@ -1407,7 +1513,7 @@ export default function DashboardPage() {
                           await login(emp.employeeCode);
                           window.location.href = '/onboarding';
                         }}
-                        className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-2 py-1 rounded"
+                        className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-lg"
                       >
                         Launch Form →
                       </button>
@@ -1456,7 +1562,7 @@ export default function DashboardPage() {
         {/* Modal 4: Clean Database Confirmation */}
         {isResetConfirmOpen && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
               <div className="flex items-center gap-3 text-red-600">
                 <AlertCircle className="h-6 w-6" />
                 <h3 className="font-bold text-lg text-slate-900">Reset Program Roster?</h3>
@@ -1490,7 +1596,7 @@ export default function DashboardPage() {
         {/* Modal 5: Decline match dialog */}
         {isDeclineOpen && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
               <h3 className="font-bold text-lg text-slate-900">Decline Pairing Proposal</h3>
               <p className="text-xs text-slate-500">
                 Please provide a brief reason to help the program administrator find a more compatible match.
