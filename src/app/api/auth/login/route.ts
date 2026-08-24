@@ -10,12 +10,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Employee Code is required' }, { status: 400 });
     }
 
-    const employee = await prisma.employee.findUnique({
+    let employee = await prisma.employee.findUnique({
       where: { employeeCode },
     });
 
+    // If EMP001 (Admin) is not yet in database (e.g. freshly created Railway DB), auto-seed Admin
+    if (!employee && employeeCode === 'EMP001') {
+      employee = await prisma.employee.create({
+        data: {
+          employeeCode: 'EMP001',
+          name: 'Radhika Sen',
+          email: 'radhika.sen@corp.com',
+          role: 'ADMIN',
+          department: 'HR, L&D & Operational Excellence',
+          designation: 'Head of L&D and Operational Excellence',
+          joinDate: new Date(),
+        },
+      });
+    }
+
     if (!employee) {
-      return NextResponse.json({ error: 'Employee not found. Please register or contact HR.' }, { status: 404 });
+      return NextResponse.json({ error: `Employee ${employeeCode} not found in roster.` }, { status: 404 });
     }
 
     const sessionData = {

@@ -88,9 +88,7 @@ export default function OnboardingPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-    } else if (!loading && user) {
+    if (!loading && user) {
       // Pre-fill existing profile data if available
       if (user.careerGoals && !careerGoals) setCareerGoals(user.careerGoals);
       if (user.topics && user.topics.length > 0 && selectedTopics.length === 0) setSelectedTopics(user.topics);
@@ -98,7 +96,7 @@ export default function OnboardingPage() {
       if (user.availability && !availability) setAvailability(user.availability);
       if (user.commStyleNotes && !commStyleNotes) setCommStyleNotes(user.commStyleNotes);
     }
-  }, [user, loading, router]);
+  }, [user, loading]);
 
   const handleTopicToggle = (topic: string) => {
     setSelectedTopics((prev) =>

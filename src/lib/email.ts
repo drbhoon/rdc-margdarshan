@@ -41,7 +41,7 @@ export async function sendCandidateInviteEmail({
   customAppUrl?: string;
 }) {
   const baseUrl = customAppUrl || APP_URL;
-  const onboardingUrl = `${baseUrl}/onboarding`;
+  const onboardingUrl = `${baseUrl}/onboarding?emp=${encodeURIComponent(employeeCode)}`;
   const roleLabel = role === 'MENTEE' ? 'Young Engineer (Mentee)' : 'Leader / Manager (Mentor)';
 
   const subject = `[Margdarshan] Invitation to Join the 3-Month Mentoring Program - Action Required`;

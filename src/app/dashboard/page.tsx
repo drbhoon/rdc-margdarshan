@@ -35,6 +35,8 @@ import {
   Zap,
   Star,
   ChevronDown,
+  Link,
+  ExternalLink,
 } from 'lucide-react';
 
 interface ParsedCandidate {
@@ -55,6 +57,10 @@ export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Copy Link State
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
 
   // Decline dialog state
   const [isDeclineOpen, setIsDeclineOpen] = useState(false);
@@ -105,15 +111,41 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-      return;
-    }
-
     if (user) {
       fetchDashboardData();
     }
-  }, [user, loading, router]);
+  }, [user]);
+
+  const getCandidateLink = (employeeCode: string) => {
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin}/onboarding?emp=${encodeURIComponent(employeeCode)}`;
+    }
+    return `/onboarding?emp=${encodeURIComponent(employeeCode)}`;
+  };
+
+  const copyToClipboard = (text: string, codeId: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedCode(codeId);
+      setTimeout(() => setCopiedCode(null), 2500);
+    }
+  };
+
+  const copyAllLinks = () => {
+    if (!dashboardData?.allEmployees) return;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const text = dashboardData.allEmployees
+      .map(
+        (emp: any) =>
+          `[${emp.role}] ${emp.name} (ID: ${emp.employeeCode}) - ${emp.email}\nPersonalized Onboarding Link: ${origin}/onboarding?emp=${encodeURIComponent(emp.employeeCode)}`
+      )
+      .join('\n\n');
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 2500);
+    }
+  };
 
   const handleRespondMatch = async (action: 'ACCEPT' | 'DECLINE') => {
     if (!dashboardData?.pair) return;
@@ -198,7 +230,7 @@ export default function DashboardPage() {
           designation: 'Graduate Engineer Trainee',
           joinDate: new Date().toISOString().split('T')[0],
         });
-        setAdminStatusMsg(`Candidate ${data.candidate.name} (${data.candidate.employeeCode}) added to program roster!`);
+        setAdminStatusMsg(`Candidate ${data.candidate.name} (${data.candidate.employeeCode}) added! Personalized link generated.`);
         await fetchDashboardData();
       } else {
         setError(data.error || 'Failed to add candidate.');
@@ -419,7 +451,7 @@ export default function DashboardPage() {
         setIsExcelImportOpen(false);
         setParsedCandidates([]);
         setUploadedFileName('');
-        setAdminStatusMsg(`Successfully imported ${data.count} candidates from Excel to the program roster!`);
+        setAdminStatusMsg(`Successfully imported ${data.count} candidates! Personalized intake links have been generated.`);
         await fetchDashboardData();
       } else {
         setError(data.error || 'Failed to import candidates.');
@@ -574,7 +606,7 @@ export default function DashboardPage() {
               </div>
               <button
                 onClick={logout}
-                title="Logout"
+                title="Reset to Admin View"
                 className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
               >
                 <LogOut className="w-5 h-5" />
@@ -646,7 +678,7 @@ export default function DashboardPage() {
                       className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold tracking-wide transition shadow-md shadow-purple-900/40"
                     >
                       <Mail className="w-4 h-4" />
-                      1. Broadcast Invites
+                      1. Broadcast Invites &amp; Links
                     </button>
 
                     {/* 2. Run AI Match */}
@@ -745,28 +777,40 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* ==================== SECTION 1: CANDIDATE INTAKE ==================== */}
+            {/* ==================== SECTION 1: CANDIDATE INTAKE & DIRECT LINKS ==================== */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Candidate Intake &amp; Form Submissions</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Mentees &amp; Mentors registered in the program. Each candidate completes onboarding before matching.</p>
+                  <h2 className="text-lg font-bold text-slate-900">Candidate Intake &amp; Direct Prefilled Links</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Mentees &amp; Mentors registered in the program. Each candidate has a personalized link that auto-authenticates and pre-fills their profile.
+                  </p>
                 </div>
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
-                  {dashboardData?.allEmployees?.length || 0} Total Candidates
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={copyAllLinks}
+                    disabled={!dashboardData?.allEmployees?.length}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg transition-all shadow-sm"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedAll ? '✓ All Links Copied!' : '📋 Copy All Candidate Links'}</span>
+                  </button>
+                  <span className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700">
+                    {dashboardData?.allEmployees?.length || 0} Candidates
+                  </span>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      <th className="py-3.5 px-6">Employee Name &amp; ID</th>
+                      <th className="py-3.5 px-6">Candidate &amp; ID</th>
                       <th className="py-3.5 px-6">Role &amp; Dept</th>
-                      <th className="py-3.5 px-6">Profile Intake Status</th>
+                      <th className="py-3.5 px-6">Intake Status</th>
                       <th className="py-3.5 px-6">DISC Style</th>
-                      <th className="py-3.5 px-6">Competency &amp; Challenges Focus</th>
-                      <th className="py-3.5 px-6 text-right">Quick Test</th>
+                      <th className="py-3.5 px-6">Generated Intake Link (Auto-Auth)</th>
+                      <th className="py-3.5 px-6 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
@@ -779,6 +823,9 @@ export default function DashboardPage() {
                     ) : (
                       dashboardData.allEmployees.map((emp: any) => {
                         const isComplete = emp.discStyle && (emp.topics?.length > 0 || emp.careerGoals);
+                        const candidateUrl = getCandidateLink(emp.employeeCode);
+                        const isCopied = copiedCode === emp.employeeCode;
+
                         return (
                           <tr key={emp.employeeCode} className="hover:bg-slate-50/60 transition">
                             <td className="py-4 px-6 font-semibold text-slate-900">
@@ -820,18 +867,19 @@ export default function DashboardPage() {
                                 <span className="text-slate-400 italic text-[11px]">Not taken</span>
                               )}
                             </td>
-                            <td className="py-4 px-6 max-w-xs text-slate-600">
-                              <div className="flex flex-wrap gap-1">
-                                {emp.topics?.slice(0, 2).map((t: string) => (
-                                  <span key={t} className="bg-slate-100 text-slate-700 text-[9px] px-1.5 py-0.5 rounded font-medium truncate max-w-[130px]">
-                                    {t}
-                                  </span>
-                                ))}
-                                {emp.challenges?.slice(0, 1).map((c: string) => (
-                                  <span key={c} className="bg-amber-50 text-amber-800 border border-amber-200 text-[9px] px-1.5 py-0.5 rounded font-medium truncate max-w-[130px]">
-                                    {c}
-                                  </span>
-                                ))}
+                            <td className="py-4 px-6">
+                              <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 max-w-xs">
+                                <span className="text-[10px] font-mono text-slate-500 truncate flex-1 select-all">
+                                  /onboarding?emp={emp.employeeCode}
+                                </span>
+                                <button
+                                  onClick={() => copyToClipboard(candidateUrl, emp.employeeCode)}
+                                  title="Copy direct onboarding URL to clipboard"
+                                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-900 bg-white border border-slate-200 hover:border-indigo-300 px-2 py-0.5 rounded shadow-2xs flex items-center gap-1 transition-all"
+                                >
+                                  {isCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                  <span>{isCopied ? 'Copied!' : 'Copy'}</span>
+                                </button>
                               </div>
                             </td>
                             <td className="py-4 px-6 text-right">
@@ -842,7 +890,7 @@ export default function DashboardPage() {
                                 }}
                                 className="px-3 py-1 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition inline-flex items-center gap-1"
                               >
-                                <span>Login as {emp.name.split(' ')[0]}</span>
+                                <span>Open Form</span>
                                 <ArrowRight className="w-3 h-3" />
                               </button>
                             </td>
@@ -1331,7 +1379,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <h3 className="font-bold text-lg text-slate-900">Upload Candidates Excel / CSV Sheet</h3>
-                    <p className="text-xs text-slate-500">Upload your structured spreadsheet with Employee Code, Name, Email, Role, Department & Designation.</p>
+                    <p className="text-xs text-slate-500">Upload your spreadsheet with Employee Code, Name, Email, Role, Department & Designation.</p>
                   </div>
                 </div>
                 <button onClick={() => { setIsExcelImportOpen(false); setParsedCandidates([]); setUploadedFileName(''); }} className="text-slate-400 hover:text-slate-600">
@@ -1479,81 +1527,122 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Modal 3: Broadcast Invites Dialog */}
+        {/* Modal 3: Broadcast Invites & Export Links Dialog */}
         {isBroadcastModalOpen && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full p-6 space-y-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
               <div className="flex justify-between items-center border-b pb-3">
                 <div className="flex items-center gap-2">
                   <Mail className="h-5 w-5 text-indigo-600" />
-                  <h3 className="font-bold text-lg text-slate-900">1. Broadcast Program Invites</h3>
+                  <h3 className="font-bold text-lg text-slate-900">1. Broadcast Invites &amp; Personalized Links</h3>
                 </div>
                 <button onClick={() => setIsBroadcastModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Invitations simulate sending corporate email notifications containing direct 3-month mentoring onboarding links to all registered Mentees and Mentors in your roster.
-              </p>
+              <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-3">
+                <p className="text-xs text-slate-600">
+                  Each candidate has a pre-filled link that directly authenticates their onboarding profile.
+                </p>
+                <button
+                  type="button"
+                  onClick={copyAllLinks}
+                  disabled={!dashboardData?.allEmployees?.length}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-300 px-3 py-1.5 rounded-lg transition-all shadow-sm shrink-0"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{copiedAll ? '✓ All Links Copied!' : '📋 Copy All Links'}</span>
+                </button>
+              </div>
 
-              <div className="bg-slate-50 p-4 border border-slate-200 rounded-xl max-h-56 overflow-y-auto space-y-2 text-xs">
-                <span className="font-bold text-slate-700 block uppercase text-[10px] tracking-wider">Candidate Direct Intake Links:</span>
+              <div className="flex-1 overflow-y-auto space-y-2 border border-slate-200 rounded-xl p-3 bg-white max-h-72">
                 {(!dashboardData?.allEmployees || dashboardData.allEmployees.length === 0) ? (
-                  <p className="text-slate-400 italic">No candidates registered. Upload Excel candidate sheet first.</p>
+                  <p className="text-slate-400 italic text-center py-6 text-xs">No candidates registered. Upload Excel candidate sheet first.</p>
                 ) : (
-                  dashboardData.allEmployees.map((emp: any) => (
-                    <div key={emp.employeeCode} className="flex justify-between items-center bg-white p-2.5 border rounded-lg">
-                      <div>
-                        <p className="font-semibold text-slate-800">{emp.name} ({emp.role})</p>
-                        <p className="text-[10px] text-slate-400 font-mono">{emp.email} • ID: {emp.employeeCode}</p>
+                  dashboardData.allEmployees.map((emp: any) => {
+                    const candidateUrl = getCandidateLink(emp.employeeCode);
+                    const isCopied = copiedCode === emp.employeeCode;
+                    return (
+                      <div key={emp.employeeCode} className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200 rounded-lg gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-800 text-xs">{emp.name}</span>
+                            <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                              emp.role === 'MENTEE' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {emp.role}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">#{emp.employeeCode}</span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 truncate mt-0.5">{emp.email}</p>
+                          <p className="text-[10px] text-indigo-600 font-mono truncate select-all">{candidateUrl}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(candidateUrl, emp.employeeCode)}
+                            className="text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-md shadow-2xs flex items-center gap-1 transition-all"
+                          >
+                            {isCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                            <span>{isCopied ? 'Copied!' : 'Copy Link'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await login(emp.employeeCode);
+                              window.location.href = '/onboarding';
+                            }}
+                            className="text-[11px] font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs flex items-center gap-1"
+                          >
+                            <span>Open</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        onClick={async () => {
-                          await login(emp.employeeCode);
-                          window.location.href = '/onboarding';
-                        }}
-                        className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-lg"
-                      >
-                        Launch Form →
-                      </button>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t">
-                <button
-                  type="button"
-                  onClick={() => setIsBroadcastModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 text-xs font-semibold"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setCandidateActionLoading(true);
-                    try {
-                      const res = await fetch('/api/admin/candidates', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'BROADCAST_INVITES' }),
-                      });
-                      const data = await res.json();
-                      setIsBroadcastModalOpen(false);
-                      setAdminStatusMsg(data.message || 'Program invites successfully broadcasted!');
-                    } catch (e) {
-                      setError('Failed to broadcast invites.');
-                    } finally {
-                      setCandidateActionLoading(false);
-                    }
-                  }}
-                  disabled={candidateActionLoading}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow disabled:opacity-50"
-                >
-                  {candidateActionLoading ? 'Sending Emails...' : 'Confirm & Broadcast Emails'}
-                </button>
+              <div className="flex justify-between items-center pt-3 border-t">
+                <span className="text-xs text-slate-500">
+                  {dashboardData?.allEmployees?.length || 0} candidate links ready
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsBroadcastModalOpen(false)}
+                    className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 text-xs font-semibold"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setCandidateActionLoading(true);
+                      try {
+                        const res = await fetch('/api/admin/candidates', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'BROADCAST_INVITES' }),
+                        });
+                        const data = await res.json();
+                        setIsBroadcastModalOpen(false);
+                        setAdminStatusMsg(data.message || 'Program invites successfully broadcasted!');
+                      } catch (e) {
+                        setError('Failed to broadcast invites.');
+                      } finally {
+                        setCandidateActionLoading(false);
+                      }
+                    }}
+                    disabled={candidateActionLoading}
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <Mail className="h-4 w-4" />
+                    <span>{candidateActionLoading ? 'Sending Emails...' : 'Send All via noreply@rdc.in'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
