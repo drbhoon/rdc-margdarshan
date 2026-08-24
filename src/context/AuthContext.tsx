@@ -19,6 +19,22 @@ export interface User {
   commStyleNotes: string | null;
 }
 
+const DEFAULT_ADMIN: User = {
+  employeeCode: 'EMP001',
+  name: 'Radhika Sen',
+  email: 'radhika.sen@corp.com',
+  role: 'ADMIN',
+  department: 'HR, L&D & Operational Excellence',
+  designation: 'Head of L&D and Operational Excellence',
+  discStyle: null,
+  isConsentShared: true,
+  careerGoals: null,
+  topics: [],
+  challenges: [],
+  availability: null,
+  commStyleNotes: null,
+};
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -30,20 +46,23 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Default to Admin so the main Admin Dashboard always loads immediately
+  const [user, setUser] = useState<User | null>(DEFAULT_ADMIN);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const fetchProfile = async () => {
     try {
-      const profileRes = await fetch('/api/employee/profile');
-      if (profileRes.ok) {
-        const profileData = await profileRes.json();
-        setUser(profileData.employee);
-        return profileData.employee;
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setUser(data.user);
+          return data.user;
+        }
       }
     } catch (e) {
-      console.error('Error fetching employee profile:', e);
+      console.error('Error fetching session profile:', e);
     }
     return null;
   };
@@ -72,39 +91,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const initAuth = async () => {
     try {
-      setLoading(true);
-
       // 1. Check if a magic parameter ?emp=... or ?code=... is in the URL
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
         const magicEmpCode = params.get('emp') || params.get('code') || params.get('employeeCode');
 
         if (magicEmpCode) {
-          const res = await login(magicEmpCode);
-          if (res.success) {
-            setLoading(false);
-            return;
-          }
-        }
-      }
-
-      // 2. Check existing session
-      const res = await fetch('/api/auth/me');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
-          await fetchProfile();
-          setLoading(false);
+          await login(magicEmpCode);
           return;
         }
       }
 
-      // 3. If no session, auto-login as default Admin (Radhika Sen - EMP001) so Dashboard opens seamlessly
-      await login('EMP001');
+      // 2. Fetch active session
+      await fetchProfile();
     } catch (e) {
       console.error('Auth initialization error:', e);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -115,8 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
-      setUser(null);
-      // Re-initialize as Admin on logout
+      setUser(DEFAULT_ADMIN);
       await login('EMP001');
     } catch (e) {
       console.error('Logout error:', e);
