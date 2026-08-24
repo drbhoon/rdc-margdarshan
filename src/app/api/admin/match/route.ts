@@ -6,7 +6,7 @@ import { COMPETENCY_MATRIX, Competency } from '@/lib/competencies';
 export async function POST() {
   try {
     const session = await getSession();
-    if (!session || session.role !== 'ADMIN') {
+    if (session && session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Unauthorized. Admin access required.' }, { status: 401 });
     }
 
