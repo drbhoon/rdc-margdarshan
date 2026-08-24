@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'margdarshan-super-secret-key-12345';
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'margdarshan-super-secret-key-12345';
 
 export interface UserSession {
   employeeCode: string;
@@ -37,8 +37,12 @@ export function verifyToken(token: string): UserSession | null {
 }
 
 export async function getSession(): Promise<UserSession | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('token')?.value;
-  if (!token) return null;
-  return verifyToken(token);
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('token')?.value;
+    if (!token) return null;
+    return verifyToken(token);
+  } catch {
+    return null;
+  }
 }

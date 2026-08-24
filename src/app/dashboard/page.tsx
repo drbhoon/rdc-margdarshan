@@ -113,8 +113,10 @@ export default function DashboardPage() {
   useEffect(() => {
     if (user) {
       fetchDashboardData();
+    } else if (!loading && !user) {
+      setDataLoading(false);
     }
-  }, [user]);
+  }, [user, loading]);
 
   const getCandidateLink = (employeeCode: string) => {
     if (typeof window !== 'undefined') {
