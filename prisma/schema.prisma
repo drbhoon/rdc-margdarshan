@@ -1,0 +1,188 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Employee {
+  employeeCode     String             @id
+  email            String             @unique
+  name             String
+  department       String
+  designation      String
+  joinDate         DateTime
+  role             Role               @default(MENTEE)
+  
+  // Profile Setup
+  discStyle        String?            
+  discRawResponse  Json?              
+  careerGoals      String?
+  topics           String[]           
+  challenges       String[]           @default([])
+  availability     String?
+  commStyleNotes   String?
+  isConsentShared  Boolean            @default(false)
+  mentorCapacity   Int                @default(1)
+
+  // Relations
+  pairAsMentee     MentoringPair[]    @relation("MenteePairs")
+  pairAsMentor     MentoringPair[]    @relation("MentorPairs")
+  privateNotes     PrivateNote[]
+  actionItems      ActionItem[]       @relation("AssignedTo")
+  contributedRes   Resource[]         @relation("Contributor")
+  surveys          SurveyFeedback[]
+  auditLogs        AuditLog[]
+}
+
+enum Role {
+  MENTEE
+  MENTOR
+  ADMIN
+}
+
+model Cohort {
+  id               String             @id @default(uuid())
+  name             String             
+  startDate        DateTime
+  endDate          DateTime
+  status           CohortStatus       @default(DRAFT)
+  pairs            MentoringPair[]
+}
+
+enum CohortStatus {
+  DRAFT
+  MATCHING
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model MentoringPair {
+  id               String             @id @default(uuid())
+  cohortId         String
+  cohort           Cohort             @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  menteeCode       String
+  mentee           Employee           @relation("MenteePairs", fields: [menteeCode], references: [employeeCode])
+  mentorCode       String
+  mentor           Employee           @relation("MentorPairs", fields: [mentorCode], references: [employeeCode])
+  
+  status           PairStatus         @default(PROPOSED)
+  matchScore       Float
+  declineReason    String?
+  
+  sharedGoals      String?            
+  sessions         Session[]
+  notebooks        SharedNotebook[]
+  
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+enum PairStatus {
+  PROPOSED
+  PENDING_ACCEPTANCE
+  ACCEPTED
+  DECLINED
+  ACTIVE
+  TERMINATED
+}
+
+model Session {
+  id                         String             @id @default(uuid())
+  pairId                     String
+  pair                       MentoringPair      @relation(fields: [pairId], references: [id], onDelete: Cascade)
+  weekNumber                 Int                
+  scheduledTime              DateTime?
+  googleMeetLink             String?
+  calendarEventId            String?
+  status                     SessionStatus      @default(SCHEDULED)
+  
+  preSessionNotes            String?            
+  discussionPoints           String?
+  insights                   String?
+  commitments                String?
+  supportNeeded              String?
+  recordingUrl               String?            
+  isRecordingConsentGranted   Boolean            @default(false)
+  
+  postSessionReflectionMentee String?
+  postSessionReflectionMentor String?
+  
+  actionItems                ActionItem[]
+}
+
+enum SessionStatus {
+  SCHEDULED
+  COMPLETED
+  MISSED
+  RESCHEDULED
+}
+
+model SharedNotebook {
+  id               String             @id @default(uuid())
+  pairId           String
+  pair             MentoringPair      @relation(fields: [pairId], references: [id], onDelete: Cascade)
+  content          String
+  updatedBy        String
+  updatedAt        DateTime           @updatedAt
+}
+
+model PrivateNote {
+  id               String             @id @default(uuid())
+  employeeCode     String
+  employee         Employee           @relation(fields: [employeeCode], references: [employeeCode], onDelete: Cascade)
+  content          String
+  createdAt        DateTime           @default(now())
+}
+
+model ActionItem {
+  id               String             @id @default(uuid())
+  sessionId        String?
+  session          Session?           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  employeeCode     String
+  assignee         Employee           @relation("AssignedTo", fields: [employeeCode], references: [employeeCode], onDelete: Cascade)
+  title            String
+  description      String?
+  dueDate          DateTime
+  status           ActionStatus       @default(PENDING)
+}
+
+enum ActionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+}
+
+model Resource {
+  id               String             @id @default(uuid())
+  title            String
+  url              String?
+  content          String?            
+  tags             String[]           
+  contributedByCode String?
+  contributor      Employee?          @relation("Contributor", fields: [contributedByCode], references: [employeeCode])
+  isApproved       Boolean            @default(false)
+}
+
+model SurveyFeedback {
+  id               String             @id @default(uuid())
+  employeeCode     String
+  employee         Employee           @relation(fields: [employeeCode], references: [employeeCode], onDelete: Cascade)
+  weekNumber       Int                
+  growthRating     Int                
+  feedbackText     String
+  createdAt        DateTime           @default(now())
+}
+
+model AuditLog {
+  id               String             @id @default(uuid())
+  performedByCode  String
+  employee         Employee           @relation(fields: [performedByCode], references: [employeeCode], onDelete: Cascade)
+  action           String             
+  details          String
+  timestamp        DateTime           @default(now())
+}
