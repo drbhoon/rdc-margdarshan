@@ -411,6 +411,7 @@ export default function DashboardPage() {
   const handleSaveCreatePair = async () => {
     if (!newPairMentee || !newPairMentor) {
       setError('Please select both a Mentee and a Mentor.');
+      alert('Please select both a Mentee and a Mentor.');
       return;
     }
     setPairActionLoading(true);
@@ -431,11 +432,47 @@ export default function DashboardPage() {
         setIsCreatePairOpen(false);
         setAdminStatusMsg('Custom pairing created successfully!');
         await fetchDashboardData();
+        await refreshAllUsers();
       } else {
         setError(data.error || 'Failed to create pairing.');
+        alert('Error creating pairing: ' + (data.error || 'Unknown error'));
       }
-    } catch (err) {
-      setError('Connection error.');
+    } catch (err: any) {
+      setError(err?.message || 'Connection error.');
+      alert('Connection error: ' + (err?.message || 'Failed to connect to server.'));
+    } finally {
+      setPairActionLoading(false);
+    }
+  };
+
+  // Direct 1-Click Fast Pairing
+  const handleDirectAssignPair = async (menteeCode: string, mentorCode: string) => {
+    if (!menteeCode || !mentorCode) return;
+    setPairActionLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'CREATE_PAIR',
+          menteeCode,
+          mentorCode,
+          status: 'ACTIVE',
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminStatusMsg(`Successfully paired ${menteeCode} and activated 12-week mentoring relationship!`);
+        await fetchDashboardData();
+        await refreshAllUsers();
+      } else {
+        setError(data.error || 'Failed to create pairing.');
+        alert('Error creating pairing: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Connection error.');
+      alert('Connection error: ' + (err?.message || 'Failed to connect to server.'));
     } finally {
       setPairActionLoading(false);
     }
@@ -1449,9 +1486,38 @@ export default function DashboardPage() {
                             {unpairedMentees.map((m: any) => (
                               <tr key={m.employeeCode} className="bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-amber-400 transition">
                                 <td className="py-4 px-6">
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 font-semibold text-xs border border-amber-300">
-                                    ⚠️ No Mentor Assigned
-                                  </span>
+                                  <div className="flex items-center gap-1.5 max-w-xs">
+                                    <select
+                                      id={`inline-mentor-select-${m.employeeCode}`}
+                                      defaultValue=""
+                                      className="p-1.5 border border-amber-300 rounded-lg text-xs bg-white font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 max-w-[190px]"
+                                    >
+                                      <option value="" disabled>Select Mentor...</option>
+                                      {(allUsers.length > 0 ? allUsers : (dashboardData?.allEmployees || []))
+                                        .filter((u: any) => u.role === 'MENTOR')
+                                        .map((mentor: any) => (
+                                          <option key={mentor.employeeCode} value={mentor.employeeCode}>
+                                            👔 {mentor.name} ({(calcScore(mentor.employeeCode, m.employeeCode) * 100).toFixed(0)}% Match)
+                                          </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                      onClick={() => {
+                                        const selectEl = document.getElementById(`inline-mentor-select-${m.employeeCode}`) as HTMLSelectElement;
+                                        if (selectEl && selectEl.value) {
+                                          handleDirectAssignPair(m.employeeCode, selectEl.value);
+                                        } else {
+                                          handleOpenCreateModal(m.employeeCode);
+                                        }
+                                      }}
+                                      disabled={pairActionLoading}
+                                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition inline-flex items-center gap-1 shrink-0"
+                                      title="Instant 1-click pair and activate 12-week mentoring relationship"
+                                    >
+                                      <Zap className="w-3 h-3" />
+                                      <span>Pair</span>
+                                    </button>
+                                  </div>
                                 </td>
                                 <td className="py-4 px-6 font-semibold text-slate-900">
                                   <div className="flex items-center space-x-2">
@@ -1474,7 +1540,7 @@ export default function DashboardPage() {
                                   —
                                 </td>
                                 <td className="py-4 px-6">
-                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-200 text-amber-900 border border-amber-300 uppercase">
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-200 text-amber-900 border border-amber-300 uppercase animate-pulse">
                                     UNPAIRED
                                   </span>
                                 </td>
