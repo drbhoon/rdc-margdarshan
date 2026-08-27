@@ -61,7 +61,7 @@ const DISC_QUESTIONS = [
 ];
 
 export default function OnboardingPage() {
-  const { user, loading, login, logout, refreshUser } = useAuth();
+  const { user, allUsers, loading, login, logout, refreshUser } = useAuth();
   const router = useRouter();
 
   // Step 1: Goals, competencies & challenges. Step 2: DISC. Step 3: Summary
@@ -274,11 +274,42 @@ export default function OnboardingPage() {
                 className="text-xs bg-white border border-slate-300 rounded px-2 py-1 font-semibold text-slate-800 cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-500"
               >
                 <option value="" disabled>Switch Persona...</option>
-                <option value="EMP001">👑 Puja Singh (Admin)</option>
-                <option value="EMP101">👔 Amit Sharma (Mentor)</option>
-                <option value="EMP102">👔 Priya Patel (Mentor)</option>
-                <option value="EMP201">🌱 Aarav Mehta (Mentee)</option>
-                <option value="EMP205">🌱 Vikram Shah (New Mentee)</option>
+                
+                {/* Admin */}
+                <optgroup label="👑 Administration">
+                  {allUsers
+                    .filter((u) => u.role === 'ADMIN')
+                    .map((u) => (
+                      <option key={u.employeeCode} value={u.employeeCode}>
+                        👑 {u.name} (Admin - {u.employeeCode})
+                      </option>
+                    ))}
+                  {!allUsers.some((u) => u.role === 'ADMIN') && (
+                    <option value="EMP001">👑 Puja Singh (Admin - EMP001)</option>
+                  )}
+                </optgroup>
+
+                {/* Mentors */}
+                <optgroup label="👔 Leaders & Mentors">
+                  {allUsers
+                    .filter((u) => u.role === 'MENTOR')
+                    .map((u) => (
+                      <option key={u.employeeCode} value={u.employeeCode}>
+                        👔 {u.name} (Mentor - {u.employeeCode})
+                      </option>
+                    ))}
+                </optgroup>
+
+                {/* Mentees */}
+                <optgroup label="🌱 Young Engineers (Mentees)">
+                  {allUsers
+                    .filter((u) => u.role === 'MENTEE')
+                    .map((u) => (
+                      <option key={u.employeeCode} value={u.employeeCode}>
+                        🌱 {u.name} (Mentee - {u.employeeCode})
+                      </option>
+                    ))}
+                </optgroup>
               </select>
             </div>
             <div className="text-right hidden sm:block">

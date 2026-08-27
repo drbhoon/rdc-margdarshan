@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, ensureDatabaseSchema } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { COMPETENCY_MATRIX, Competency } from '@/lib/competencies';
+import { calculateMatchScore } from '@/lib/competencies';
 
 export async function POST() {
   try {
@@ -40,88 +40,42 @@ export async function POST() {
     const mentees = await prisma.employee.findMany({ where: { role: 'MENTEE' } });
     const mentors = await prisma.employee.findMany({ where: { role: 'MENTOR' } });
 
-    // Track mentor current pairing counts
+    if (mentors.length === 0) {
+      return NextResponse.json({ error: 'No mentors found in roster. Please add mentors first.' }, { status: 400 });
+    }
+
+    if (mentees.length === 0) {
+      return NextResponse.json({ error: 'No mentees found in roster. Please add mentees first.' }, { status: 400 });
+    }
+
+    // Track mentor current pairing counts. Mentors can take more than 1 mentee!
+    // Calculate required capacity dynamically to ensure ALL mentees get paired
+    const minNeededCapacity = Math.ceil(mentees.length / mentors.length);
     const mentorCapacities: Record<string, number> = {};
     mentors.forEach((m) => {
-      mentorCapacities[m.employeeCode] = m.mentorCapacity;
+      mentorCapacities[m.employeeCode] = Math.max(m.mentorCapacity || 1, minNeededCapacity, 2);
     });
 
     let pairsCreated = 0;
+    const pairedMenteeCodes = new Set<string>();
 
-    // Helper functions for scoring
-    const getDiscScore = (mStyle: string | null, eStyle: string | null): number => {
-      if (!mStyle || !eStyle) return 0.5;
-      
-      // Simplify hybrid styles to first dominant trait
-      const mChar = mStyle.charAt(0);
-      const eChar = eStyle.charAt(0);
-
-      if (mChar === eChar) return 0.4; // Identical: good but lacks growth tension
-
-      // Complementary matches
-      const complementary = [
-        ['D', 'S'],
-        ['S', 'D'],
-        ['I', 'C'],
-        ['C', 'I'],
-      ];
-      
-      const isComplementary = complementary.some(([a, b]) => a === mChar && b === eChar);
-      if (isComplementary) return 1.0;
-
-      return 0.6; // Neutral
-    };
-
-    // Calculate competency overlap using primary focus and secondary cascade matrix
-    const getCompetencyScore = (mTopics: string[], eTopics: string[]): number => {
-      if (eTopics.length === 0) return 0.5;
-      
-      // Direct primary overlap
-      const directMatches = eTopics.filter((t) => mTopics.includes(t)).length;
-      
-      // Secondary behavioral cascade overlap from framework matrix
-      let secondaryMatches = 0;
-      for (const eTopic of eTopics) {
-        const secondaries = COMPETENCY_MATRIX[eTopic as Competency] || [];
-        const hasSecondary = secondaries.some((sec) => mTopics.includes(sec));
-        if (hasSecondary) secondaryMatches += 1;
-      }
-
-      if (directMatches > 0) {
-        return Math.min(1.0, 0.7 + directMatches * 0.15 + secondaryMatches * 0.05);
-      } else if (secondaryMatches > 0) {
-        return Math.min(0.8, 0.4 + secondaryMatches * 0.1);
-      }
-      return 0.2;
-    };
-
-    // Greedy matching approach: For each mentee, calculate score with all available mentors
-    // and assign them to the highest-scoring mentor who still has capacity.
+    // Pass 1: Match each mentee with highest-scoring mentor having available capacity
     for (const mentee of mentees) {
       let bestMentorCode: string | null = null;
       let bestScore = -1;
 
       for (const mentor of mentors) {
-        // Check remaining capacity
         const remainingCap = mentorCapacities[mentor.employeeCode] || 0;
         if (remainingCap <= 0) continue;
 
-        // Calculate components
-        const discScore = getDiscScore(mentor.discStyle, mentee.discStyle);
-        const deptScore = mentor.department !== mentee.department ? 1.0 : 0.3; // Cross-functional preferred
-        const compScore = getCompetencyScore(mentor.topics, mentee.topics);
-
-        // Compute weighted score: DISC (35%), Department Diversity (25%), Competency Cascade (40%)
-        const score = 0.35 * discScore + 0.25 * deptScore + 0.40 * compScore;
-
+        const score = calculateMatchScore(mentor, mentee);
         if (score > bestScore) {
           bestScore = score;
           bestMentorCode = mentor.employeeCode;
         }
       }
 
-      if (bestMentorCode) {
-        // Create pairing
+      if (bestMentorCode && bestScore >= 0) {
         await prisma.mentoringPair.create({
           data: {
             cohortId: cohort.id,
@@ -132,8 +86,39 @@ export async function POST() {
           },
         });
 
-        // Decrement capacity
         mentorCapacities[bestMentorCode] -= 1;
+        pairedMenteeCodes.add(mentee.employeeCode);
+        pairsCreated += 1;
+      }
+    }
+
+    // Pass 2: If any mentee remains unmatched, match them with the best mentor regardless of capacity
+    for (const mentee of mentees) {
+      if (pairedMenteeCodes.has(mentee.employeeCode)) continue;
+
+      let bestMentorCode: string | null = null;
+      let bestScore = -1;
+
+      for (const mentor of mentors) {
+        const score = calculateMatchScore(mentor, mentee);
+        if (score > bestScore) {
+          bestScore = score;
+          bestMentorCode = mentor.employeeCode;
+        }
+      }
+
+      if (bestMentorCode) {
+        await prisma.mentoringPair.create({
+          data: {
+            cohortId: cohort.id,
+            menteeCode: mentee.employeeCode,
+            mentorCode: bestMentorCode,
+            status: 'PROPOSED',
+            matchScore: bestScore,
+          },
+        });
+
+        pairedMenteeCodes.add(mentee.employeeCode);
         pairsCreated += 1;
       }
     }
@@ -144,3 +129,4 @@ export async function POST() {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+

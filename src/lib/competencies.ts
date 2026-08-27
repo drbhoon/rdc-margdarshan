@@ -108,3 +108,53 @@ export const COMPETENCY_MATRIX: Record<Competency, Competency[]> = {
     'Safety, Operational Discipline & SARTAJ Ownership',
   ],
 };
+
+export function calculateMatchScore(
+  mentor: { discStyle?: string | null; department?: string | null; topics?: string[] },
+  mentee: { discStyle?: string | null; department?: string | null; topics?: string[] }
+): number {
+  let discScore = 0.5;
+  const mStyle = mentor.discStyle;
+  const eStyle = mentee.discStyle;
+  if (mStyle && eStyle) {
+    const mChar = mStyle.charAt(0);
+    const eChar = eStyle.charAt(0);
+    if (mChar === eChar) {
+      discScore = 0.4;
+    } else {
+      const complementary = [
+        ['D', 'S'],
+        ['S', 'D'],
+        ['I', 'C'],
+        ['C', 'I'],
+      ];
+      const isComp = complementary.some(([a, b]) => a === mChar && b === eChar);
+      discScore = isComp ? 1.0 : 0.6;
+    }
+  }
+
+  const deptScore = mentor.department && mentee.department && mentor.department !== mentee.department ? 1.0 : 0.4;
+
+  const mTopics = mentor.topics || [];
+  const eTopics = mentee.topics || [];
+  let compScore = 0.5;
+  if (eTopics.length > 0) {
+    const directMatches = eTopics.filter((t) => mTopics.includes(t)).length;
+    let secondaryMatches = 0;
+    for (const eTopic of eTopics) {
+      const secondaries = COMPETENCY_MATRIX[eTopic as Competency] || [];
+      const hasSecondary = secondaries.some((sec) => mTopics.includes(sec));
+      if (hasSecondary) secondaryMatches += 1;
+    }
+    if (directMatches > 0) {
+      compScore = Math.min(1.0, 0.7 + directMatches * 0.15 + secondaryMatches * 0.05);
+    } else if (secondaryMatches > 0) {
+      compScore = Math.min(0.8, 0.4 + secondaryMatches * 0.1);
+    } else {
+      compScore = 0.3;
+    }
+  }
+
+  return Number((0.35 * discScore + 0.25 * deptScore + 0.40 * compScore).toFixed(2));
+}
+

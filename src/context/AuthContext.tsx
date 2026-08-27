@@ -37,10 +37,12 @@ const DEFAULT_ADMIN: User = {
 
 interface AuthContextType {
   user: User | null;
+  allUsers: User[];
   loading: boolean;
   login: (employeeCode: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  refreshAllUsers: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -48,8 +50,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Default to Admin so the main Admin Dashboard always loads immediately
   const [user, setUser] = useState<User | null>(DEFAULT_ADMIN);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  const fetchAllUsers = async () => {
+    try {
+      const res = await fetch('/api/auth/users');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.users)) {
+          setAllUsers(data.users);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching all users roster:', e);
+    }
+  };
 
   const fetchProfile = async () => {
     try {
@@ -80,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!fullUser) {
           setUser(data.user);
         }
+        await fetchAllUsers();
         return { success: true };
       } else {
         return { success: false, error: data.error || 'Login failed' };
@@ -91,6 +109,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const initAuth = async () => {
     try {
+      await fetchAllUsers();
+
       // 1. Check if a magic parameter ?emp=... or ?code=... is in the URL
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
@@ -118,6 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await fetch('/api/auth/logout', { method: 'POST' });
       setUser(DEFAULT_ADMIN);
       await login('EMP001');
+      await fetchAllUsers();
     } catch (e) {
       console.error('Logout error:', e);
     }
@@ -125,10 +146,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = async () => {
     await fetchProfile();
+    await fetchAllUsers();
+  };
+
+  const refreshAllUsers = async () => {
+    await fetchAllUsers();
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, allUsers, loading, login, logout, refreshUser, refreshAllUsers }}>
       {children}
     </AuthContext.Provider>
   );
@@ -141,3 +167,4 @@ export function useAuth() {
   }
   return context;
 }
+

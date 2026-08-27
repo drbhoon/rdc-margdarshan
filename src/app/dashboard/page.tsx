@@ -37,6 +37,10 @@ import {
   ChevronDown,
   Link,
   ExternalLink,
+  Edit3,
+  CheckCircle2,
+  XCircle,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 interface ParsedCandidate {
@@ -51,7 +55,7 @@ interface ParsedCandidate {
 }
 
 export default function DashboardPage() {
-  const { user, loading, login, logout, refreshUser } = useAuth();
+  const { user, allUsers, loading, login, logout, refreshUser, refreshAllUsers } = useAuth();
   const router = useRouter();
 
   const [dashboardData, setDashboardData] = useState<any>(null);
@@ -77,6 +81,20 @@ export default function DashboardPage() {
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
   const [candidateActionLoading, setCandidateActionLoading] = useState(false);
+
+  // Edit / Custom Pairing states
+  const [isEditPairOpen, setIsEditPairOpen] = useState(false);
+  const [selectedPairForEdit, setSelectedPairForEdit] = useState<any>(null);
+  const [editMentorCode, setEditMentorCode] = useState('');
+  const [editStatus, setEditStatus] = useState<'PROPOSED' | 'ACTIVE'>('PROPOSED');
+  const [editScorePreview, setEditScorePreview] = useState<number>(0.8);
+
+  const [isCreatePairOpen, setIsCreatePairOpen] = useState(false);
+  const [newPairMentee, setNewPairMentee] = useState('');
+  const [newPairMentor, setNewPairMentor] = useState('');
+  const [newPairStatus, setNewPairStatus] = useState<'PROPOSED' | 'ACTIVE'>('ACTIVE');
+  const [newPairScorePreview, setNewPairScorePreview] = useState<number>(0.8);
+  const [pairActionLoading, setPairActionLoading] = useState(false);
 
   // Single candidate form
   const [newCandidate, setNewCandidate] = useState({
@@ -205,6 +223,221 @@ export default function DashboardPage() {
       setError('Network error during auto-matching.');
     } finally {
       setAdminRunningMatch(false);
+    }
+  };
+
+  // Compatibility score calculator for live preview
+  const calcScore = (mentorCode: string, menteeCode: string): number => {
+    const list = allUsers?.length ? allUsers : (dashboardData?.allEmployees || []);
+    const mentor = list.find((u: any) => u.employeeCode === mentorCode);
+    const mentee = list.find((u: any) => u.employeeCode === menteeCode);
+    if (!mentor || !mentee) return 0.75;
+
+    let discScore = 0.5;
+    if (mentor.discStyle && mentee.discStyle) {
+      const mChar = mentor.discStyle.charAt(0);
+      const eChar = mentee.discStyle.charAt(0);
+      if (mChar === eChar) discScore = 0.4;
+      else {
+        const comp = [['D', 'S'], ['S', 'D'], ['I', 'C'], ['C', 'I']];
+        discScore = comp.some(([a, b]) => a === mChar && b === eChar) ? 1.0 : 0.6;
+      }
+    }
+    const deptScore = mentor.department !== mentee.department ? 1.0 : 0.4;
+    const mTopics = mentor.topics || [];
+    const eTopics = mentee.topics || [];
+    const direct = eTopics.filter((t: string) => mTopics.includes(t)).length;
+    const compScore = direct > 0 ? Math.min(1.0, 0.7 + direct * 0.15) : 0.4;
+    return Number((0.35 * discScore + 0.25 * deptScore + 0.40 * compScore).toFixed(2));
+  };
+
+  // Confirm single pair
+  const handleConfirmPair = async (pairId: string) => {
+    setPairActionLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'CONFIRM_PAIR', pairId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminStatusMsg('Pairing confirmed and activated successfully! 12-week sessions initialized.');
+        await fetchDashboardData();
+      } else {
+        setError(data.error || 'Failed to confirm pairing.');
+      }
+    } catch (err) {
+      setError('Connection error.');
+    } finally {
+      setPairActionLoading(false);
+    }
+  };
+
+  // Confirm all proposed pairs
+  const handleConfirmAllPairs = async () => {
+    setPairActionLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'CONFIRM_ALL' }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminStatusMsg(data.message || `All ${data.count} pairings confirmed and activated!`);
+        await fetchDashboardData();
+      } else {
+        setError(data.error || 'Failed to confirm all pairs.');
+      }
+    } catch (err) {
+      setError('Connection error.');
+    } finally {
+      setPairActionLoading(false);
+    }
+  };
+
+  // Reject pair
+  const handleRejectPair = async (pairId: string) => {
+    setPairActionLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'REJECT_PAIR', pairId, reason: 'Admin rejected pairing' }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminStatusMsg('Pairing marked as rejected.');
+        await fetchDashboardData();
+      } else {
+        setError(data.error || 'Failed to reject pairing.');
+      }
+    } catch (err) {
+      setError('Connection error.');
+    } finally {
+      setPairActionLoading(false);
+    }
+  };
+
+  // Delete pair
+  const handleDeletePair = async (pairId: string) => {
+    if (!confirm('Are you sure you want to delete this pairing?')) return;
+    setPairActionLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'DELETE_PAIR', pairId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminStatusMsg('Pairing removed successfully.');
+        await fetchDashboardData();
+      } else {
+        setError(data.error || 'Failed to delete pairing.');
+      }
+    } catch (err) {
+      setError('Connection error.');
+    } finally {
+      setPairActionLoading(false);
+    }
+  };
+
+  // Open Edit Modal
+  const handleOpenEditModal = (pair: any) => {
+    setSelectedPairForEdit(pair);
+    setEditMentorCode(pair.mentorCode);
+    setEditStatus(pair.status === 'ACTIVE' ? 'ACTIVE' : 'PROPOSED');
+    setEditScorePreview(pair.matchScore || calcScore(pair.mentorCode, pair.menteeCode));
+    setIsEditPairOpen(true);
+  };
+
+  // Save Edit Modal
+  const handleSaveEditPair = async () => {
+    if (!selectedPairForEdit) return;
+    setPairActionLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'UPDATE_PAIR',
+          pairId: selectedPairForEdit.id,
+          mentorCode: editMentorCode,
+          menteeCode: selectedPairForEdit.menteeCode,
+          status: editStatus,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setIsEditPairOpen(false);
+        setAdminStatusMsg('Pairing updated successfully with recalculated compatibility score.');
+        await fetchDashboardData();
+      } else {
+        setError(data.error || 'Failed to update pairing.');
+      }
+    } catch (err) {
+      setError('Connection error.');
+    } finally {
+      setPairActionLoading(false);
+    }
+  };
+
+  // Open Create Custom Modal
+  const handleOpenCreateModal = () => {
+    const list = allUsers?.length ? allUsers : (dashboardData?.allEmployees || []);
+    const mentees = list.filter((u: any) => u.role === 'MENTEE');
+    const mentors = list.filter((u: any) => u.role === 'MENTOR');
+
+    const defaultMentee = mentees[0]?.employeeCode || '';
+    const defaultMentor = mentors[0]?.employeeCode || '';
+
+    setNewPairMentee(defaultMentee);
+    setNewPairMentor(defaultMentor);
+    setNewPairStatus('ACTIVE');
+    if (defaultMentee && defaultMentor) {
+      setNewPairScorePreview(calcScore(defaultMentor, defaultMentee));
+    }
+    setIsCreatePairOpen(true);
+  };
+
+  // Save Create Custom Modal
+  const handleSaveCreatePair = async () => {
+    if (!newPairMentee || !newPairMentor) {
+      setError('Please select both a Mentee and a Mentor.');
+      return;
+    }
+    setPairActionLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'CREATE_PAIR',
+          menteeCode: newPairMentee,
+          mentorCode: newPairMentor,
+          status: newPairStatus,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setIsCreatePairOpen(false);
+        setAdminStatusMsg('Custom pairing created successfully!');
+        await fetchDashboardData();
+      } else {
+        setError(data.error || 'Failed to create pairing.');
+      }
+    } catch (err) {
+      setError('Connection error.');
+    } finally {
+      setPairActionLoading(false);
     }
   };
 
@@ -578,20 +811,42 @@ export default function DashboardPage() {
                 className="bg-transparent border-none text-xs font-semibold text-slate-800 cursor-pointer focus:outline-none pr-1"
               >
                 <option value="" disabled>Switch Persona...</option>
-                <option value="EMP001">👑 Puja Singh (Admin)</option>
-                {dashboardData?.allEmployees?.map((e: any) => (
-                  <option key={e.employeeCode} value={e.employeeCode}>
-                    {e.role === 'MENTOR' ? '👔' : '🌱'} {e.name} ({e.role} - {e.employeeCode})
-                  </option>
-                ))}
-                {(!dashboardData?.allEmployees || dashboardData.allEmployees.length === 0) && (
-                  <>
-                    <option value="EMP101">👔 Amit Sharma (Mentor)</option>
-                    <option value="EMP102">👔 Priya Patel (Mentor)</option>
-                    <option value="EMP201">🌱 Aarav Mehta (Mentee)</option>
-                    <option value="EMP205">🌱 Vikram Shah (Mentee)</option>
-                  </>
-                )}
+                
+                {/* Admin */}
+                <optgroup label="👑 Administration">
+                  {(allUsers.length > 0 ? allUsers : (dashboardData?.allEmployees || []))
+                    .filter((u: any) => u.role === 'ADMIN')
+                    .map((u: any) => (
+                      <option key={u.employeeCode} value={u.employeeCode}>
+                        👑 {u.name} (Admin - {u.employeeCode})
+                      </option>
+                    ))}
+                  {!(allUsers.length > 0 ? allUsers : (dashboardData?.allEmployees || [])).some((u: any) => u.role === 'ADMIN') && (
+                    <option value="EMP001">👑 Puja Singh (Admin - EMP001)</option>
+                  )}
+                </optgroup>
+
+                {/* Mentors */}
+                <optgroup label="👔 Leaders & Mentors">
+                  {(allUsers.length > 0 ? allUsers : (dashboardData?.allEmployees || []))
+                    .filter((u: any) => u.role === 'MENTOR')
+                    .map((u: any) => (
+                      <option key={u.employeeCode} value={u.employeeCode}>
+                        👔 {u.name} (Mentor - {u.employeeCode})
+                      </option>
+                    ))}
+                </optgroup>
+
+                {/* Mentees */}
+                <optgroup label="🌱 Young Engineers (Mentees)">
+                  {(allUsers.length > 0 ? allUsers : (dashboardData?.allEmployees || []))
+                    .filter((u: any) => u.role === 'MENTEE')
+                    .map((u: any) => (
+                      <option key={u.employeeCode} value={u.employeeCode}>
+                        🌱 {u.name} (Mentee - {u.employeeCode})
+                      </option>
+                    ))}
+                </optgroup>
               </select>
             </div>
 
@@ -905,19 +1160,49 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* ==================== SECTION 2: ACTIVE COHORT PAIRINGS ==================== */}
+            {/* ==================== SECTION 2: ACTIVE COHORT PAIRINGS & EDITABLE TELEMETRY ==================== */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Active Cohort Pairings &amp; 12-Week Telemetry</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Pairs have rolling 3-month schedules. Track AI match score, weekly sessions, and survey feedback.</p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-slate-900">Active Cohort Pairings &amp; 12-Week Telemetry</h2>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      Editable Pairings
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Admin can confirm AI proposed pairings, reject/reassign mentors, or manually pair young engineers with experienced mentors.
+                  </p>
                 </div>
-                <button
-                  onClick={() => router.push('/resources')}
-                  className="text-xs font-bold text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1"
-                >
-                  Resource Hub &rarr;
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Create Custom Pairing Button */}
+                  <button
+                    onClick={handleOpenCreateModal}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Custom Pairing</span>
+                  </button>
+
+                  {/* Confirm All Proposed Matches Button */}
+                  {dashboardData?.pairs?.some((p: any) => p.status === 'PROPOSED') && (
+                    <button
+                      onClick={handleConfirmAllPairs}
+                      disabled={pairActionLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Confirm All Proposed</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => router.push('/resources')}
+                    className="text-xs font-bold text-slate-600 hover:text-indigo-700 inline-flex items-center gap-1 pl-2"
+                  >
+                    Resource Hub &rarr;
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
@@ -929,14 +1214,15 @@ export default function DashboardPage() {
                       <th className="py-3.5 px-6">AI Match Score</th>
                       <th className="py-3.5 px-6">12-Week Sessions</th>
                       <th className="py-3.5 px-6">Survey Feedback</th>
-                      <th className="py-3.5 px-6 text-right">Status</th>
+                      <th className="py-3.5 px-6">Status</th>
+                      <th className="py-3.5 px-6 text-right">Admin Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
                     {(!dashboardData?.pairs || dashboardData.pairs.length === 0) ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-10 text-slate-400 font-medium">
-                          No pairings generated yet. Upload candidates, ensure onboarding is complete, and click <strong>"2. Run AI Match"</strong>.
+                        <td colSpan={7} className="text-center py-10 text-slate-400 font-medium">
+                          No pairings generated yet. Upload candidates, ensure onboarding is complete, and click <strong>"2. Run AI Match"</strong> or <strong>"+ Custom Pairing"</strong>.
                         </td>
                       </tr>
                     ) : (
@@ -944,6 +1230,8 @@ export default function DashboardPage() {
                         const completedSessions = p.sessions?.filter((s: any) => s.status === 'COMPLETED').length || 0;
                         const progressPercent = Math.round((completedSessions / 12) * 100);
                         const surveyCount = p.surveys?.length || 0;
+                        const isProposed = p.status === 'PROPOSED';
+                        const isActive = p.status === 'ACTIVE';
 
                         return (
                           <tr key={p.id} className="hover:bg-slate-50/60 transition">
@@ -954,7 +1242,7 @@ export default function DashboardPage() {
                                 </div>
                                 <div>
                                   <span className="font-semibold text-slate-900">{p.mentor?.name}</span>
-                                  <span className="block text-[10px] text-slate-400">{p.mentor?.department} (DISC: {p.mentor?.discStyle || 'N/A'})</span>
+                                  <span className="block text-[10px] text-slate-400 font-mono">#{p.mentorCode} &bull; {p.mentor?.department} (DISC: {p.mentor?.discStyle || 'N/A'})</span>
                                 </div>
                               </div>
                             </td>
@@ -965,7 +1253,7 @@ export default function DashboardPage() {
                                 </div>
                                 <div>
                                   <span className="font-semibold text-slate-900">{p.mentee?.name}</span>
-                                  <span className="block text-[10px] text-slate-400">{p.mentee?.department} (DISC: {p.mentee?.discStyle || 'N/A'})</span>
+                                  <span className="block text-[10px] text-slate-400 font-mono">#{p.menteeCode} &bull; {p.mentee?.department} (DISC: {p.mentee?.discStyle || 'N/A'})</span>
                                 </div>
                               </div>
                             </td>
@@ -992,18 +1280,79 @@ export default function DashboardPage() {
                                 <span className="text-slate-400 font-normal text-[11px]">({surveyCount > 0 ? `${surveyCount} Logged` : 'Pending W6'})</span>
                               </div>
                             </td>
-                            <td className="py-4 px-6 text-right">
+                            <td className="py-4 px-6">
                               <span
-                                className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                                  p.status === 'ACTIVE'
+                                className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                  isActive
                                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                     : p.status === 'DECLINED'
                                     ? 'bg-red-50 text-red-700 border border-red-200'
-                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
                                 }`}
                               >
-                                {p.status === 'ACTIVE' ? 'On Track' : p.status}
+                                {isActive ? 'Active' : p.status}
                               </span>
+                            </td>
+                            <td className="py-4 px-6 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {/* Quick Confirm Match */}
+                                {isProposed && (
+                                  <button
+                                    onClick={() => handleConfirmPair(p.id)}
+                                    disabled={pairActionLoading}
+                                    title="Confirm match & activate 12-week mentoring relationship"
+                                    className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold text-[11px] inline-flex items-center gap-1 transition shadow-2xs"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">Confirm</span>
+                                  </button>
+                                )}
+
+                                {/* Quick Reject Match */}
+                                {isProposed && (
+                                  <button
+                                    onClick={() => handleRejectPair(p.id)}
+                                    disabled={pairActionLoading}
+                                    title="Reject proposed pairing"
+                                    className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold text-[11px] inline-flex items-center gap-1 transition shadow-2xs"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">Reject</span>
+                                  </button>
+                                )}
+
+                                {/* Edit / Reassign Mentor */}
+                                <button
+                                  onClick={() => handleOpenEditModal(p)}
+                                  disabled={pairActionLoading}
+                                  title="Change mentor or adjust pairing parameters"
+                                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold text-[11px] inline-flex items-center gap-1 transition"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                                  <span className="hidden md:inline">Edit</span>
+                                </button>
+
+                                {/* Enter Space shortcut if active */}
+                                {isActive && (
+                                  <button
+                                    onClick={() => router.push(`/space/${p.id}`)}
+                                    title="Open 12-week workspace"
+                                    className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px] inline-flex items-center gap-1 transition"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+
+                                {/* Delete Pair */}
+                                <button
+                                  onClick={() => handleDeletePair(p.id)}
+                                  disabled={pairActionLoading}
+                                  title="Delete pairing"
+                                  className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1713,6 +2062,276 @@ export default function DashboardPage() {
                 >
                   {submittingResponse ? 'Submitting...' : 'Confirm Decline'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal 6: Edit & Reassign Pairing Modal */}
+        {isEditPairOpen && selectedPairForEdit && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-5">
+              <div className="flex justify-between items-center border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
+                    <SlidersHorizontal className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-slate-900">Edit &amp; Reassign Pairing</h3>
+                    <p className="text-xs text-slate-500">Override AI pairing, reassign mentor, or activate relationship.</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsEditPairOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                {/* Mentee (Fixed) */}
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                  <label className="font-bold text-slate-500 block mb-1 uppercase text-[10px] tracking-wider">Young Engineer (Mentee)</label>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-slate-900 text-sm">{selectedPairForEdit.mentee?.name || selectedPairForEdit.menteeCode}</p>
+                      <p className="text-slate-500 text-xs">
+                        #{selectedPairForEdit.menteeCode} &bull; {selectedPairForEdit.mentee?.department}
+                      </p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold text-[10px]">
+                      DISC: {selectedPairForEdit.mentee?.discStyle || 'Pending'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Mentor Selector */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1.5">Assign Leader (Mentor) *</label>
+                  <select
+                    value={editMentorCode}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      setEditMentorCode(code);
+                      setEditScorePreview(calcScore(code, selectedPairForEdit.menteeCode));
+                    }}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    {(allUsers.length > 0 ? allUsers : (dashboardData?.allEmployees || []))
+                      .filter((u: any) => u.role === 'MENTOR')
+                      .map((m: any) => (
+                        <option key={m.employeeCode} value={m.employeeCode}>
+                          👔 {m.name} (#{m.employeeCode}) — {m.department} (DISC: {m.discStyle || 'N/A'})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* Compatibility Live Preview */}
+                <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-900 text-xs flex items-center gap-1">
+                      <Zap className="w-3.5 h-3.5 text-emerald-600" />
+                      Calculated Compatibility Score
+                    </span>
+                    <span className="font-extrabold text-emerald-700 text-sm bg-white px-2 py-0.5 rounded-md border border-emerald-300 shadow-2xs">
+                      {(editScorePreview * 100).toFixed(0)}% Match
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800">
+                    Weighted across DISC behavioral dynamics (35%), cross-functional diversity (25%), and Competency Matrix overlap (40%).
+                  </p>
+                </div>
+
+                {/* Status Selector */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1.5">Pairing Status</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className={`border p-2.5 rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
+                      editStatus === 'PROPOSED' ? 'border-amber-500 bg-amber-50/60 text-amber-900 font-bold' : 'border-slate-200 text-slate-600'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="editStatus"
+                        checked={editStatus === 'PROPOSED'}
+                        onChange={() => setEditStatus('PROPOSED')}
+                      />
+                      <span>Proposed (Draft)</span>
+                    </label>
+
+                    <label className={`border p-2.5 rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
+                      editStatus === 'ACTIVE' ? 'border-emerald-600 bg-emerald-50/60 text-emerald-900 font-bold' : 'border-slate-200 text-slate-600'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="editStatus"
+                        checked={editStatus === 'ACTIVE'}
+                        onChange={() => setEditStatus('ACTIVE')}
+                      />
+                      <span>Active (12-Week Space)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex justify-end gap-2 pt-3 border-t">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditPairOpen(false)}
+                    className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveEditPair}
+                    disabled={pairActionLoading}
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold shadow disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{pairActionLoading ? 'Saving...' : 'Save Pairing Changes'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal 7: Create Custom Pairing Modal */}
+        {isCreatePairOpen && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-5">
+              <div className="flex justify-between items-center border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
+                    <Plus className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-slate-900">Create Custom Pairing</h3>
+                    <p className="text-xs text-slate-500">Pair any young engineer with an experienced mentor.</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsCreatePairOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                {/* Mentee Selector */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1.5">Select Mentee (Young Engineer) *</label>
+                  <select
+                    value={newPairMentee}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      setNewPairMentee(code);
+                      if (newPairMentor) {
+                        setNewPairScorePreview(calcScore(newPairMentor, code));
+                      }
+                    }}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value="" disabled>Select Mentee...</option>
+                    {(allUsers.length > 0 ? allUsers : (dashboardData?.allEmployees || []))
+                      .filter((u: any) => u.role === 'MENTEE')
+                      .map((m: any) => (
+                        <option key={m.employeeCode} value={m.employeeCode}>
+                          🌱 {m.name} (#{m.employeeCode}) — {m.department} (DISC: {m.discStyle || 'Pending'})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* Mentor Selector */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1.5">Select Mentor (Leader) *</label>
+                  <select
+                    value={newPairMentor}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      setNewPairMentor(code);
+                      if (newPairMentee) {
+                        setNewPairScorePreview(calcScore(code, newPairMentee));
+                      }
+                    }}
+                    className="w-full p-2.5 border border-slate-300 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    <option value="" disabled>Select Mentor...</option>
+                    {(allUsers.length > 0 ? allUsers : (dashboardData?.allEmployees || []))
+                      .filter((u: any) => u.role === 'MENTOR')
+                      .map((m: any) => (
+                        <option key={m.employeeCode} value={m.employeeCode}>
+                          👔 {m.name} (#{m.employeeCode}) — {m.department} (DISC: {m.discStyle || 'N/A'})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* Live Compatibility Preview */}
+                {newPairMentee && newPairMentor && (
+                  <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-900 text-xs flex items-center gap-1">
+                        <Zap className="w-3.5 h-3.5 text-emerald-600" />
+                        Calculated Compatibility Score
+                      </span>
+                      <span className="font-extrabold text-emerald-700 text-sm bg-white px-2 py-0.5 rounded-md border border-emerald-300 shadow-2xs">
+                        {(newPairScorePreview * 100).toFixed(0)}% Match
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-800">
+                      Evaluated on DISC profiles, department diversity, and competency overlap.
+                    </p>
+                  </div>
+                )}
+
+                {/* Status Selector */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1.5">Initial Pairing Status</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className={`border p-2.5 rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
+                      newPairStatus === 'PROPOSED' ? 'border-amber-500 bg-amber-50/60 text-amber-900 font-bold' : 'border-slate-200 text-slate-600'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="newPairStatus"
+                        checked={newPairStatus === 'PROPOSED'}
+                        onChange={() => setNewPairStatus('PROPOSED')}
+                      />
+                      <span>Proposed (Draft)</span>
+                    </label>
+
+                    <label className={`border p-2.5 rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
+                      newPairStatus === 'ACTIVE' ? 'border-emerald-600 bg-emerald-50/60 text-emerald-900 font-bold' : 'border-slate-200 text-slate-600'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="newPairStatus"
+                        checked={newPairStatus === 'ACTIVE'}
+                        onChange={() => setNewPairStatus('ACTIVE')}
+                      />
+                      <span>Active (Immediate)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex justify-end gap-2 pt-3 border-t">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatePairOpen(false)}
+                    className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveCreatePair}
+                    disabled={pairActionLoading || !newPairMentee || !newPairMentor}
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold shadow disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{pairActionLoading ? 'Creating...' : 'Create & Pair'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

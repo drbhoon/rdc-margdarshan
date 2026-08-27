@@ -140,6 +140,7 @@ export async function POST(req: NextRequest) {
             role: c.role,
             department: c.department?.trim() || 'Engineering',
             designation: c.designation?.trim() || (c.role === 'MENTEE' ? 'Graduate Engineer Trainee' : 'Engineering Manager'),
+            mentorCapacity: c.role === 'MENTOR' ? (c.mentorCapacity || 2) : 1,
           },
           create: {
             employeeCode: c.employeeCode.trim(),
@@ -150,6 +151,7 @@ export async function POST(req: NextRequest) {
             designation: c.designation?.trim() || (c.role === 'MENTEE' ? 'Graduate Engineer Trainee' : 'Engineering Manager'),
             joinDate: c.joinDate ? new Date(c.joinDate) : new Date(),
             isConsentShared: true,
+            mentorCapacity: c.role === 'MENTOR' ? (c.mentorCapacity || 2) : 1,
             topics: [],
             challenges: [],
           },
@@ -165,7 +167,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Single candidate addition
-    const { employeeCode, name, email, role, department, designation, joinDate } = body;
+    const { employeeCode, name, email, role, department, designation, joinDate, mentorCapacity } = body;
     if (!employeeCode || !name || !email || !role) {
       return NextResponse.json({ error: 'Missing required candidate fields (Code, Name, Email, Role).' }, { status: 400 });
     }
@@ -178,6 +180,7 @@ export async function POST(req: NextRequest) {
         role: role,
         department: department?.trim() || 'Engineering',
         designation: designation?.trim() || (role === 'MENTEE' ? 'Graduate Engineer Trainee' : 'Manager'),
+        mentorCapacity: role === 'MENTOR' ? (mentorCapacity || 2) : 1,
       },
       create: {
         employeeCode: employeeCode.trim(),
@@ -188,6 +191,7 @@ export async function POST(req: NextRequest) {
         designation: designation?.trim() || (role === 'MENTEE' ? 'Graduate Engineer Trainee' : 'Manager'),
         joinDate: joinDate ? new Date(joinDate) : new Date(),
         isConsentShared: true,
+        mentorCapacity: role === 'MENTOR' ? (mentorCapacity || 2) : 1,
         topics: [],
         challenges: [],
       },
