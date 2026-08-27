@@ -248,20 +248,35 @@ export default function MentoringSpacePage() {
     }
   };
 
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [customMeetingLink, setCustomMeetingLink] = useState('');
+  const [isRescheduling, setIsRescheduling] = useState(false);
+
   const handleScheduleSession = async () => {
     if (!activeSession || !scheduleDate) return;
+    setIsScheduling(true);
     try {
       const res = await fetch(`/api/pair/${pairId}/session/${activeSession.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scheduledTime: scheduleDate }),
+        body: JSON.stringify({
+          scheduledTime: scheduleDate,
+          googleMeetLink: customMeetingLink.trim() || undefined,
+        }),
       });
+      const resData = await res.json();
       if (res.ok) {
         setScheduleDate('');
+        setCustomMeetingLink('');
+        setIsRescheduling(false);
         await fetchSpaceData();
+      } else {
+        alert('Failed to schedule session: ' + (resData.error || 'Unknown error'));
       }
-    } catch (e) {
-      alert('Failed to schedule session.');
+    } catch (e: any) {
+      alert('Network error while scheduling session: ' + (e?.message || ''));
+    } finally {
+      setIsScheduling(false);
     }
   };
 
@@ -630,59 +645,161 @@ export default function MentoringSpacePage() {
             </div>
           )}
 
-          {/* Session Scheduling & Link Panel */}
+          {/* Session Scheduling & Live Meeting Link Panel */}
           <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
-            <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1">
-              <Calendar className="h-4 w-4 text-slate-400" />
-              1:1 Session Schedule
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                <Calendar className="h-4 w-4 text-indigo-600" />
+                1:1 Session Schedule &amp; Video Room
+              </h3>
+              {activeSession?.status === 'COMPLETED' && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  ✓ Completed
+                </span>
+              )}
+            </div>
 
-            {activeSession?.scheduledTime ? (
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50 p-4 border border-slate-200 rounded-lg">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Scheduled Date & Time</span>
-                  <span className="text-xs font-semibold text-slate-800">
-                    {new Date(activeSession.scheduledTime).toLocaleString()}
-                  </span>
+            {activeSession?.scheduledTime && !isRescheduling ? (
+              <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-5 rounded-xl space-y-4 shadow-md">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider block">
+                      Confirmed Meeting Schedule
+                    </span>
+                    <p className="text-sm sm:text-base font-extrabold text-white mt-0.5">
+                      📅 {new Date(activeSession.scheduledTime).toLocaleDateString(undefined, {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })} at {new Date(activeSession.scheduledTime).toLocaleTimeString(undefined, {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                    <span className="text-[11px] text-slate-300">
+                      Participants: {user?.name} &bull; {partnerName}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setScheduleDate(new Date(activeSession.scheduledTime).toISOString().slice(0, 16));
+                        setCustomMeetingLink(activeSession.googleMeetLink || '');
+                        setIsRescheduling(true);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/20 transition"
+                    >
+                      ✎ Reschedule
+                    </button>
+                    {activeSession.status !== 'COMPLETED' && (
+                      <button
+                        onClick={handleMarkCompleted}
+                        className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition shadow"
+                      >
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        <span>Mark Completed</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  {activeSession.googleMeetLink && (
+
+                {/* Video Meeting Link & Calendar Action */}
+                <div className="pt-3 border-t border-white/10 flex flex-wrap items-center gap-3">
+                  {activeSession.googleMeetLink ? (
                     <a
                       href={activeSession.googleMeetLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-all shadow-sm"
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 transition shadow-md shadow-indigo-900/50"
                     >
-                      <Video className="h-3.5 w-3.5" />
-                      Join Google Meet
+                      <Video className="h-4 w-4 text-white" />
+                      <span>Join 1:1 Live Video Room &rarr;</span>
                     </a>
-                  )}
-                  {activeSession.status !== 'COMPLETED' && (
+                  ) : (
                     <button
-                      onClick={handleMarkCompleted}
-                      className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-all shadow-sm"
+                      onClick={() => handleScheduleSession()}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-xl font-bold transition"
                     >
-                      <CheckCircle className="h-3.5 w-3.5" />
-                      Mark Completed
+                      Generate Video Link
                     </button>
                   )}
+
+                  {/* Google Calendar Link */}
+                  {(() => {
+                    const start = new Date(activeSession.scheduledTime);
+                    const end = new Date(start.getTime() + 60 * 60 * 1000);
+                    const formatTime = (d: Date) => d.toISOString().replace(/-|:|\.\d+/g, '');
+                    const title = encodeURIComponent(`Margdarshan Mentoring: Week ${selectedWeek} - ${WEEK_THEMES[selectedWeek].title} (${partnerName})`);
+                    const details = encodeURIComponent(`Margdarshan 1:1 Mentoring Session (Week ${selectedWeek}: ${WEEK_THEMES[selectedWeek].title})\n\nAgenda:\n${activeSession.discussionPoints || WEEK_THEMES[selectedWeek].objectives}\n\nVideo Link:\n${activeSession.googleMeetLink || ''}`);
+                    const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${formatTime(start)}/${formatTime(end)}&details=${details}&location=${encodeURIComponent(activeSession.googleMeetLink || '')}`;
+
+                    return (
+                      <a
+                        href={gcalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs px-3.5 py-2.5 rounded-xl font-semibold flex items-center gap-1.5 transition"
+                      >
+                        <Calendar className="h-3.5 w-3.5 text-indigo-300" />
+                        <span>Add to Calendar</span>
+                      </a>
+                    );
+                  })()}
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col sm:flex-row items-center gap-3">
-                <input
-                  type="datetime-local"
-                  value={scheduleDate}
-                  onChange={(e) => setScheduleDate(e.target.value)}
-                  className="w-full sm:w-auto px-3 py-2 border rounded-lg text-xs bg-slate-50 focus:outline-none"
-                />
-                <button
-                  onClick={handleScheduleSession}
-                  disabled={!scheduleDate}
-                  className="w-full sm:w-auto bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2 rounded-lg font-bold transition-all disabled:opacity-50"
-                >
-                  Schedule Session
-                </button>
+              <div className="bg-slate-50 p-4 border border-slate-200 rounded-xl space-y-3">
+                <p className="text-xs text-slate-600">
+                  {isRescheduling
+                    ? 'Select a new date and time to reschedule this 1:1 session:'
+                    : 'Select a proposed date and time for your 1:1 mentoring session:'}
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Session Date &amp; Time *</label>
+                    <input
+                      type="datetime-local"
+                      value={scheduleDate}
+                      onChange={(e) => setScheduleDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Custom Meeting URL (Optional)</label>
+                    <input
+                      type="url"
+                      placeholder="e.g. Google Meet, MS Teams, or Zoom link..."
+                      value={customMeetingLink}
+                      onChange={(e) => setCustomMeetingLink(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  {isRescheduling && (
+                    <button
+                      type="button"
+                      onClick={() => setIsRescheduling(false)}
+                      className="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-lg text-xs font-semibold hover:bg-white transition"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleScheduleSession}
+                    disabled={!scheduleDate || isScheduling}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-5 py-2 rounded-lg font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 shadow"
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>{isScheduling ? 'Scheduling...' : (isRescheduling ? 'Confirm Reschedule' : 'Schedule 1:1 Session')}</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
