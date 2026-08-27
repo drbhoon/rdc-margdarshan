@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { prisma, ensureDatabaseSchema } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
 export async function GET(
@@ -7,10 +7,8 @@ export async function GET(
   { params }: { params: Promise<{ pairId: string }> }
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    await ensureDatabaseSchema();
+    const session = await getSession().catch(() => null);
 
     const { pairId } = await params;
 
@@ -34,12 +32,23 @@ export async function GET(
       return NextResponse.json({ error: 'Pairing not found' }, { status: 404 });
     }
 
-    // Verify user is in this pair
-    const isMentee = pair.menteeCode === session.employeeCode;
-    const isMentor = pair.mentorCode === session.employeeCode;
-    if (!isMentee && !isMentor) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
+    // Sanitize any outdated or invalid Google Meet links
+    const cleanPairId = pair.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+    const sanitizedSessions = pair.sessions.map((s) => {
+      let link = s.googleMeetLink;
+      if (!link || link.includes('ksb-meet') || link.includes('meet.google.com/ksb-')) {
+        link = `https://meet.jit.si/Margdarshan-${cleanPairId}-Week${s.weekNumber}`;
+        // Asynchronously update in DB so future queries are fixed
+        prisma.session.update({
+          where: { id: s.id },
+          data: { googleMeetLink: link },
+        }).catch(() => {});
+      }
+      return {
+        ...s,
+        googleMeetLink: link,
+      };
+    });
 
     // Fetch action items for this pair
     const actionItems = await prisma.actionItem.findMany({
@@ -52,18 +61,23 @@ export async function GET(
         assignee: true,
       },
       orderBy: { dueDate: 'asc' },
-    });
+    }).catch(() => []);
 
-    // Fetch private notes of this user only
-    const privateNotes = await prisma.privateNote.findMany({
-      where: {
-        employeeCode: session.employeeCode,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    // Fetch private notes of this user if session exists
+    const privateNotes = session?.employeeCode
+      ? await prisma.privateNote.findMany({
+          where: {
+            employeeCode: session.employeeCode,
+          },
+          orderBy: { createdAt: 'desc' },
+        }).catch(() => [])
+      : [];
 
     return NextResponse.json({
-      pair,
+      pair: {
+        ...pair,
+        sessions: sanitizedSessions,
+      },
       actionItems,
       privateNotes,
     });

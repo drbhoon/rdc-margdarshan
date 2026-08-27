@@ -707,33 +707,50 @@ export default function MentoringSpacePage() {
 
                 {/* Video Meeting Link & Calendar Action */}
                 <div className="pt-3 border-t border-white/10 flex flex-wrap items-center gap-3">
-                  {activeSession.googleMeetLink ? (
-                    <a
-                      href={activeSession.googleMeetLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 transition shadow-md shadow-indigo-900/50"
-                    >
-                      <Video className="h-4 w-4 text-white" />
-                      <span>Join 1:1 Live Video Room &rarr;</span>
-                    </a>
-                  ) : (
-                    <button
-                      onClick={() => handleScheduleSession()}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2 rounded-xl font-bold transition"
-                    >
-                      Generate Video Link
-                    </button>
-                  )}
+                  {(() => {
+                    const cleanId = (pairId || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+                    const validVideoUrl = (!activeSession.googleMeetLink || activeSession.googleMeetLink.includes('ksb-meet'))
+                      ? `https://meet.jit.si/Margdarshan-${cleanId}-Week${selectedWeek}`
+                      : activeSession.googleMeetLink;
+
+                    return (
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <a
+                          href={validVideoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 transition shadow-md shadow-indigo-900/50"
+                        >
+                          <Video className="h-4 w-4 text-white" />
+                          <span>Join 1:1 Live Video Room &rarr;</span>
+                        </a>
+
+                        <a
+                          href="https://meet.google.com/new"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs px-3 py-2 rounded-xl font-medium flex items-center gap-1.5 transition"
+                          title="Open Google Meet to start an official Google call"
+                        >
+                          <Video className="h-3.5 w-3.5 text-amber-300" />
+                          <span>Google Meet (New Room)</span>
+                        </a>
+                      </div>
+                    );
+                  })()}
 
                   {/* Google Calendar Link */}
                   {(() => {
+                    const cleanId = (pairId || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+                    const validVideoUrl = (!activeSession.googleMeetLink || activeSession.googleMeetLink.includes('ksb-meet'))
+                      ? `https://meet.jit.si/Margdarshan-${cleanId}-Week${selectedWeek}`
+                      : activeSession.googleMeetLink;
                     const start = new Date(activeSession.scheduledTime);
                     const end = new Date(start.getTime() + 60 * 60 * 1000);
                     const formatTime = (d: Date) => d.toISOString().replace(/-|:|\.\d+/g, '');
                     const title = encodeURIComponent(`Margdarshan Mentoring: Week ${selectedWeek} - ${WEEK_THEMES[selectedWeek].title} (${partnerName})`);
-                    const details = encodeURIComponent(`Margdarshan 1:1 Mentoring Session (Week ${selectedWeek}: ${WEEK_THEMES[selectedWeek].title})\n\nAgenda:\n${activeSession.discussionPoints || WEEK_THEMES[selectedWeek].objectives}\n\nVideo Link:\n${activeSession.googleMeetLink || ''}`);
-                    const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${formatTime(start)}/${formatTime(end)}&details=${details}&location=${encodeURIComponent(activeSession.googleMeetLink || '')}`;
+                    const details = encodeURIComponent(`Margdarshan 1:1 Mentoring Session (Week ${selectedWeek}: ${WEEK_THEMES[selectedWeek].title})\n\nAgenda:\n${activeSession.discussionPoints || WEEK_THEMES[selectedWeek].objectives}\n\nVideo Link:\n${validVideoUrl}`);
+                    const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${formatTime(start)}/${formatTime(end)}&details=${details}&location=${encodeURIComponent(validVideoUrl)}`;
 
                     return (
                       <a
