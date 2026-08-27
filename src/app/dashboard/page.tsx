@@ -95,6 +95,7 @@ export default function DashboardPage() {
   const [newPairStatus, setNewPairStatus] = useState<'PROPOSED' | 'ACTIVE'>('ACTIVE');
   const [newPairScorePreview, setNewPairScorePreview] = useState<number>(0.8);
   const [pairActionLoading, setPairActionLoading] = useState(false);
+  const [selectedPairIndex, setSelectedPairIndex] = useState(0);
 
   // Single candidate form
   const [newCandidate, setNewCandidate] = useState({
@@ -794,7 +795,8 @@ export default function DashboardPage() {
     );
   }
 
-  const myPair = dashboardData?.pair;
+  const userPairs = dashboardData?.pairs || (dashboardData?.pair ? [dashboardData.pair] : []);
+  const myPair = userPairs[selectedPairIndex] || userPairs[0] || dashboardData?.pair;
   const isPairActive = myPair?.status === 'ACTIVE';
   const isMeMentee = myPair?.menteeCode === user?.employeeCode;
   const counterpart = isMeMentee ? myPair?.mentor : myPair?.mentee;
@@ -1569,6 +1571,78 @@ export default function DashboardPage() {
         {/* ----------------- MENTOR/MENTEE DASHBOARD ----------------- */}
         {user?.role !== 'ADMIN' && (
           <div className="space-y-8">
+            {/* Multi-Mentee Selector Bar for Mentors with more than 1 mentee */}
+            {userPairs.length > 1 && (
+              <div className="bg-white rounded-2xl border border-indigo-200 p-5 shadow-sm space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse"></span>
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+                      My Assigned Mentees ({userPairs.length}) &bull; Multi-Mentee Workspace
+                    </h3>
+                  </div>
+                  <span className="text-xs text-slate-500 font-medium">
+                    Click a mentee to view their profile, commitments, &amp; enter their individual 12-week space:
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-1">
+                  {userPairs.map((p: any, idx: number) => {
+                    const isSelected = idx === selectedPairIndex;
+                    const otherParty = p.menteeCode === user?.employeeCode ? p.mentor : p.mentee;
+
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setSelectedPairIndex(idx)}
+                        className={`p-3.5 rounded-xl text-left transition-all border flex flex-col justify-between gap-3 cursor-pointer ${
+                          isSelected
+                            ? 'bg-slate-900 border-slate-900 text-white shadow-md ring-2 ring-indigo-500'
+                            : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2.5">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
+                              isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-800'
+                            }`}>
+                              {getUserInitials(otherParty?.name)}
+                            </div>
+                            <div>
+                              <p className="font-bold text-xs">{otherParty?.name}</p>
+                              <p className={`text-[10px] font-mono ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
+                                #{otherParty?.employeeCode} &bull; {otherParty?.department}
+                              </p>
+                            </div>
+                          </div>
+                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded ${
+                            isSelected ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            ⚡ {(p.matchScore * 100).toFixed(0)}%
+                          </span>
+                        </div>
+
+                        <div className={`flex items-center justify-between border-t pt-2 text-[11px] ${
+                          isSelected ? 'border-slate-800' : 'border-slate-200'
+                        }`}>
+                          <span className={`font-semibold uppercase text-[10px] ${
+                            p.status === 'ACTIVE' ? (isSelected ? 'text-emerald-400 font-bold' : 'text-emerald-700 font-bold') : 'text-amber-500 font-bold'
+                          }`}>
+                            ● {p.status}
+                          </span>
+                          <span className={`font-bold inline-flex items-center gap-1 ${
+                            isSelected ? 'text-indigo-300' : 'text-indigo-600'
+                          }`}>
+                            {isSelected ? '✓ Active View' : 'Switch Mentee →'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Case 1: No Pair is set up */}
             {!myPair && (
               <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center max-w-xl mx-auto shadow-md space-y-4">

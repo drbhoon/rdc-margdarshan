@@ -56,7 +56,7 @@ export async function GET() {
       }
     } else {
       try {
-        const pair = await prisma.mentoringPair.findFirst({
+        const pairs = await prisma.mentoringPair.findMany({
           where: {
             OR: [
               { menteeCode: employeeCode },
@@ -75,17 +75,19 @@ export async function GET() {
             },
           },
           orderBy: { createdAt: 'desc' },
-        }).catch(() => null);
+        }).catch(() => []);
+
+        const pair = pairs[0] || null;
 
         const actionItems = await prisma.actionItem.findMany({
           where: { employeeCode, status: { not: 'COMPLETED' } },
           orderBy: { dueDate: 'asc' },
         }).catch(() => []);
 
-        return NextResponse.json({ pair, actionItems });
+        return NextResponse.json({ pair, pairs, actionItems });
       } catch (dbErr) {
         console.error('User dashboard DB query error:', dbErr);
-        return NextResponse.json({ pair: null, actionItems: [] });
+        return NextResponse.json({ pair: null, pairs: [], actionItems: [] });
       }
     }
   } catch (error) {

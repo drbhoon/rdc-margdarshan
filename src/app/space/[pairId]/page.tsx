@@ -57,6 +57,9 @@ export default function MentoringSpacePage() {
   // Input states
   const [scheduleDate, setScheduleDate] = useState('');
   const [goalsInput, setGoalsInput] = useState('');
+  const [isEditingAgenda, setIsEditingAgenda] = useState(false);
+  const [customAgendaText, setCustomAgendaText] = useState('');
+  const [savingAgenda, setSavingAgenda] = useState(false);
   const [notesInput, setNotesInput] = useState({
     discussionPoints: '',
     insights: '',
@@ -118,10 +121,12 @@ export default function MentoringSpacePage() {
     }
   }, [pairId, user, loading]);
 
-  // Load session notes when changing selected week
+  // Load session notes and custom agenda when changing selected week
   const activeSession = data?.pair?.sessions?.find((s: any) => s.weekNumber === selectedWeek);
   useEffect(() => {
     if (activeSession) {
+      setCustomAgendaText(activeSession.discussionPoints || '');
+      setIsEditingAgenda(false);
       setNotesInput({
         discussionPoints: activeSession.discussionPoints || '',
         insights: activeSession.insights || '',
@@ -180,6 +185,31 @@ export default function MentoringSpacePage() {
       }
     } catch (e) {
       alert('Failed to save goals.');
+    }
+  };
+
+  const handleSaveAgenda = async () => {
+    if (!activeSession) return;
+    setSavingAgenda(true);
+    try {
+      const res = await fetch(`/api/pair/${pairId}/session/${activeSession.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          discussionPoints: customAgendaText,
+        }),
+      });
+
+      if (res.ok) {
+        setIsEditingAgenda(false);
+        await fetchSpaceData();
+      } else {
+        alert('Failed to save agenda.');
+      }
+    } catch (e) {
+      alert('Network error while saving agenda.');
+    } finally {
+      setSavingAgenda(false);
     }
   };
 
@@ -436,17 +466,112 @@ export default function MentoringSpacePage() {
 
         {/* COL 2: Main Workspace Component (cols-6) */}
         <main className="lg:col-span-6 overflow-y-auto p-6 space-y-6">
-          {/* Active Theme objectives card */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Selected Session Theme
-            </span>
-            <h2 className="text-lg font-bold text-slate-800">
-              Week {selectedWeek}: {WEEK_THEMES[selectedWeek].title}
-            </h2>
+          {/* Active Theme & Mentor-Editable Agenda Card */}
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Selected Session Theme &bull; Week {selectedWeek}
+                </span>
+                <h2 className="text-lg font-bold text-slate-800">
+                  Week {selectedWeek}: {WEEK_THEMES[selectedWeek].title}
+                </h2>
+              </div>
+              
+              {/* Edit Agenda button for Mentors / Admin */}
+              {(user?.role === 'ADMIN' || user?.role === 'MENTOR' || user?.employeeCode === data?.pair?.mentorCode) && !isEditingAgenda && (
+                <button
+                  onClick={() => {
+                    setCustomAgendaText(activeSession?.discussionPoints || `• Review ${WEEK_THEMES[selectedWeek].title} objectives\n• Discuss operational challenges and key learnings\n• Agree on action commitments for next week`);
+                    setIsEditingAgenda(true);
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>✎ Edit Meeting Agenda</span>
+                </button>
+              )}
+            </div>
+
             <p className="text-xs text-slate-500 leading-relaxed">
               {WEEK_THEMES[selectedWeek].objectives}
             </p>
+
+            {/* If Mentor is Editing the Agenda */}
+            {isEditingAgenda && (
+              <div className="mt-3 p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-indigo-900 text-xs flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    Customize Meeting Agenda (Reflects automatically on Mentee's screen)
+                  </span>
+                  <span className="text-[10px] text-indigo-700 font-semibold bg-white px-2 py-0.5 rounded border border-indigo-200">
+                    Mentor Editing Mode
+                  </span>
+                </div>
+                <p className="text-[11px] text-indigo-700">
+                  Write the customized discussion topics, specific plant questions, or focus points you want the mentee to prepare for this week.
+                </p>
+                <textarea
+                  rows={4}
+                  value={customAgendaText}
+                  onChange={(e) => setCustomAgendaText(e.target.value)}
+                  placeholder="e.g. • Review equipment vibration logs\n• Discuss root cause analysis on Line 2\n• Set milestone targets for next sprint"
+                  className="w-full p-3 border border-indigo-300 rounded-lg text-xs bg-white text-slate-800 font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingAgenda(false)}
+                    className="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-lg text-xs font-semibold hover:bg-white transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveAgenda}
+                    disabled={savingAgenda}
+                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow transition flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>{savingAgenda ? 'Saving...' : 'Save & Sync Agenda to Mentee'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Display Configured Agenda (Read-only for Mentee, with highlight) */}
+            {!isEditingAgenda && (
+              <div className="mt-2 p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                    Meeting Agenda &amp; Discussion Focus
+                  </span>
+                  {activeSession?.discussionPoints ? (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                      ✓ Customized by Mentor
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      Default Framework Focus
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-700 whitespace-pre-line font-normal leading-relaxed pt-1">
+                  {activeSession?.discussionPoints || (
+                    <span className="text-slate-500 italic">
+                      {WEEK_THEMES[selectedWeek].objectives}
+                    </span>
+                  )}
+                </div>
+                {isMeMentee && (
+                  <p className="text-[10px] text-slate-400 italic pt-1 border-t border-slate-200/60 mt-2">
+                    💡 This agenda was configured by your mentor ({partnerName}). Use it to guide your conversation and schedule your 1:1 below.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Survey Card */}

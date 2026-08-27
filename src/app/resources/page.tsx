@@ -53,12 +53,14 @@ export default function ResourcesPage() {
       const res = await fetch('/api/resources');
       if (res.ok) {
         const json = await res.json();
-        setResources(json.resources);
+        setResources(json.resources || []);
+        setError('');
       } else {
-        setError('Failed to fetch resources.');
+        const json = await res.json().catch(() => ({}));
+        setError(json.error || 'Failed to fetch resources.');
       }
     } catch (e) {
-      setError('Connection failure.');
+      setError('Connection failure. Please check your network or try refreshing.');
     } finally {
       setResLoading(false);
     }
