@@ -390,12 +390,12 @@ export default function DashboardPage() {
   };
 
   // Open Create Custom Modal
-  const handleOpenCreateModal = () => {
+  const handleOpenCreateModal = (preselectedMenteeCode?: string) => {
     const list = allUsers?.length ? allUsers : (dashboardData?.allEmployees || []);
     const mentees = list.filter((u: any) => u.role === 'MENTEE');
     const mentors = list.filter((u: any) => u.role === 'MENTOR');
 
-    const defaultMentee = mentees[0]?.employeeCode || '';
+    const defaultMentee = preselectedMenteeCode || mentees[0]?.employeeCode || '';
     const defaultMentor = mentors[0]?.employeeCode || '';
 
     setNewPairMentee(defaultMentee);
@@ -1066,6 +1066,7 @@ export default function DashboardPage() {
                       <th className="py-3.5 px-6">Role &amp; Dept</th>
                       <th className="py-3.5 px-6">Intake Status</th>
                       <th className="py-3.5 px-6">DISC Style</th>
+                      <th className="py-3.5 px-6">Program Pairing Status</th>
                       <th className="py-3.5 px-6">Generated Intake Link (Auto-Auth)</th>
                       <th className="py-3.5 px-6 text-right">Actions</th>
                     </tr>
@@ -1073,7 +1074,7 @@ export default function DashboardPage() {
                   <tbody className="divide-y divide-slate-100 text-xs">
                     {(!dashboardData?.allEmployees || dashboardData.allEmployees.length === 0) ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-10 text-slate-400 font-medium">
+                        <td colSpan={7} className="text-center py-10 text-slate-400 font-medium">
                           No candidates registered yet. Click <strong>"Upload Excel / Template"</strong> or <strong>"+ Add Single"</strong> above to populate your roster.
                         </td>
                       </tr>
@@ -1082,6 +1083,9 @@ export default function DashboardPage() {
                         const isComplete = emp.discStyle && (emp.topics?.length > 0 || emp.careerGoals);
                         const candidateUrl = getCandidateLink(emp.employeeCode);
                         const isCopied = copiedCode === emp.employeeCode;
+                        const isMentee = emp.role === 'MENTEE';
+                        const menteePair = isMentee ? dashboardData?.pairs?.find((p: any) => p.menteeCode === emp.employeeCode) : null;
+                        const mentorPairs = !isMentee ? (dashboardData?.pairs || []).filter((p: any) => p.mentorCode === emp.employeeCode) : [];
 
                         return (
                           <tr key={emp.employeeCode} className="hover:bg-slate-50/60 transition">
@@ -1125,6 +1129,23 @@ export default function DashboardPage() {
                               )}
                             </td>
                             <td className="py-4 px-6">
+                              {isMentee ? (
+                                menteePair ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    ✓ Paired: {menteePair.mentor?.name || menteePair.mentorCode} ({menteePair.status})
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                                    ⚠️ Unpaired
+                                  </span>
+                                )
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                  {mentorPairs.length} Mentee(s) Assigned
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-4 px-6">
                               <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 max-w-xs">
                                 <span className="text-[10px] font-mono text-slate-500 truncate flex-1 select-all">
                                   /onboarding?emp={emp.employeeCode}
@@ -1140,16 +1161,35 @@ export default function DashboardPage() {
                               </div>
                             </td>
                             <td className="py-4 px-6 text-right">
-                              <button
-                                onClick={async () => {
-                                  await login(emp.employeeCode);
-                                  window.location.href = isComplete ? '/dashboard' : '/onboarding';
-                                }}
-                                className="px-3 py-1 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition inline-flex items-center gap-1"
-                              >
-                                <span>Open Form</span>
-                                <ArrowRight className="w-3 h-3" />
-                              </button>
+                              <div className="flex items-center justify-end gap-1.5">
+                                {isMentee && !menteePair && (
+                                  <button
+                                    onClick={() => handleOpenCreateModal(emp.employeeCode)}
+                                    className="px-2.5 py-1 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-2xs transition inline-flex items-center gap-1"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    <span>Assign Mentor</span>
+                                  </button>
+                                )}
+                                {isMentee && menteePair && (
+                                  <button
+                                    onClick={() => handleOpenEditModal(menteePair)}
+                                    className="px-2 py-1 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
+                                  >
+                                    Edit Pair
+                                  </button>
+                                )}
+                                <button
+                                  onClick={async () => {
+                                    await login(emp.employeeCode);
+                                    window.location.href = isComplete ? '/dashboard' : '/onboarding';
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition inline-flex items-center gap-1"
+                                >
+                                  <span>Form</span>
+                                  <ArrowRight className="w-3 h-3" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1161,207 +1201,302 @@ export default function DashboardPage() {
             </div>
 
             {/* ==================== SECTION 2: ACTIVE COHORT PAIRINGS & EDITABLE TELEMETRY ==================== */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-bold text-slate-900">Active Cohort Pairings &amp; 12-Week Telemetry</h2>
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                      Editable Pairings
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Admin can confirm AI proposed pairings, reject/reassign mentors, or manually pair young engineers with experienced mentors.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {/* Create Custom Pairing Button */}
-                  <button
-                    onClick={handleOpenCreateModal}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition shadow-sm"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ Custom Pairing</span>
-                  </button>
+            {(() => {
+              const pairedMenteeCodes = new Set((dashboardData?.pairs || []).map((p: any) => p.menteeCode));
+              const allMentees = (dashboardData?.allEmployees || allUsers || []).filter((e: any) => e.role === 'MENTEE');
+              const unpairedMentees = allMentees.filter((m: any) => !pairedMenteeCodes.has(m.employeeCode));
 
-                  {/* Confirm All Proposed Matches Button */}
-                  {dashboardData?.pairs?.some((p: any) => p.status === 'PROPOSED') && (
-                    <button
-                      onClick={handleConfirmAllPairs}
-                      disabled={pairActionLoading}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm disabled:opacity-50"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Confirm All Proposed</span>
-                    </button>
+              return (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-0">
+                  <div className="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-bold text-slate-900">Active Cohort Pairings &amp; 12-Week Telemetry</h2>
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          Editable Pairings
+                        </span>
+                        {unpairedMentees.length > 0 && (
+                          <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                            ⚠️ {unpairedMentees.length} Mentee Unpaired
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Admin can confirm AI proposed pairings, reject/reassign mentors, or manually pair young engineers with experienced mentors.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {/* Create Custom Pairing Button */}
+                      <button
+                        onClick={() => handleOpenCreateModal()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition shadow-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Custom Pairing</span>
+                      </button>
+
+                      {/* Confirm All Proposed Matches Button */}
+                      {dashboardData?.pairs?.some((p: any) => p.status === 'PROPOSED') && (
+                        <button
+                          onClick={handleConfirmAllPairs}
+                          disabled={pairActionLoading}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Confirm All Proposed</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => router.push('/resources')}
+                        className="text-xs font-bold text-slate-600 hover:text-indigo-700 inline-flex items-center gap-1 pl-2"
+                      >
+                        Resource Hub &rarr;
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Notice Banner if any Mentees are Unpaired */}
+                  {unpairedMentees.length > 0 && (
+                    <div className="mx-6 my-4 p-4 bg-amber-50/80 border border-amber-300 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                          <h4 className="font-bold text-amber-900 text-xs sm:text-sm">
+                            {unpairedMentees.length} Mentee{unpairedMentees.length > 1 ? 's need' : ' needs'} a mentor assignment:
+                          </h4>
+                        </div>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {unpairedMentees.map((m: any) => (
+                            <button
+                              key={m.employeeCode}
+                              onClick={() => handleOpenCreateModal(m.employeeCode)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold shadow-2xs transition"
+                            >
+                              <span>🌱 {m.name} (#{m.employeeCode})</span>
+                              <span className="text-indigo-600 font-extrabold">+ Assign Mentor &rarr;</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={runAdminAutoMatching}
+                        disabled={adminRunningMatch}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow transition shrink-0 flex items-center gap-1.5"
+                      >
+                        <Zap className={`w-3.5 h-3.5 ${adminRunningMatch ? 'animate-spin' : ''}`} />
+                        <span>{adminRunningMatch ? 'Matching...' : 'Auto-Match All Now'}</span>
+                      </button>
+                    </div>
                   )}
 
-                  <button
-                    onClick={() => router.push('/resources')}
-                    className="text-xs font-bold text-slate-600 hover:text-indigo-700 inline-flex items-center gap-1 pl-2"
-                  >
-                    Resource Hub &rarr;
-                  </button>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      <th className="py-3.5 px-6">Mentor</th>
-                      <th className="py-3.5 px-6">Mentee</th>
-                      <th className="py-3.5 px-6">AI Match Score</th>
-                      <th className="py-3.5 px-6">12-Week Sessions</th>
-                      <th className="py-3.5 px-6">Survey Feedback</th>
-                      <th className="py-3.5 px-6">Status</th>
-                      <th className="py-3.5 px-6 text-right">Admin Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
-                    {(!dashboardData?.pairs || dashboardData.pairs.length === 0) ? (
-                      <tr>
-                        <td colSpan={7} className="text-center py-10 text-slate-400 font-medium">
-                          No pairings generated yet. Upload candidates, ensure onboarding is complete, and click <strong>"2. Run AI Match"</strong> or <strong>"+ Custom Pairing"</strong>.
-                        </td>
-                      </tr>
-                    ) : (
-                      dashboardData.pairs.map((p: any) => {
-                        const completedSessions = p.sessions?.filter((s: any) => s.status === 'COMPLETED').length || 0;
-                        const progressPercent = Math.round((completedSessions / 12) * 100);
-                        const surveyCount = p.surveys?.length || 0;
-                        const isProposed = p.status === 'PROPOSED';
-                        const isActive = p.status === 'ACTIVE';
-
-                        return (
-                          <tr key={p.id} className="hover:bg-slate-50/60 transition">
-                            <td className="py-4 px-6">
-                              <div className="flex items-center space-x-2">
-                                <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-[10px] text-slate-700">
-                                  {getUserInitials(p.mentor?.name)}
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-slate-900">{p.mentor?.name}</span>
-                                  <span className="block text-[10px] text-slate-400 font-mono">#{p.mentorCode} &bull; {p.mentor?.department} (DISC: {p.mentor?.discStyle || 'N/A'})</span>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-4 px-6">
-                              <div className="flex items-center space-x-2">
-                                <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">
-                                  {getUserInitials(p.mentee?.name)}
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-slate-900">{p.mentee?.name}</span>
-                                  <span className="block text-[10px] text-slate-400 font-mono">#{p.menteeCode} &bull; {p.mentee?.department} (DISC: {p.mentee?.discStyle || 'N/A'})</span>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-4 px-6">
-                              <span className="inline-flex items-center gap-1 font-extrabold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md text-xs border border-emerald-200">
-                                ⚡ {(p.matchScore * 100).toFixed(0)}% Match
-                              </span>
-                            </td>
-                            <td className="py-4 px-6">
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-[11px] font-semibold text-slate-600">
-                                  <span>Week {completedSessions} of 12</span>
-                                  <span>{progressPercent}%</span>
-                                </div>
-                                <div className="w-32 bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                                  <div className="bg-indigo-600 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(progressPercent, 100)}%` }}></div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-4 px-6">
-                              <div className="flex items-center space-x-1 text-amber-500 font-bold">
-                                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                                <span>★ 4.9</span>
-                                <span className="text-slate-400 font-normal text-[11px]">({surveyCount > 0 ? `${surveyCount} Logged` : 'Pending W6'})</span>
-                              </div>
-                            </td>
-                            <td className="py-4 px-6">
-                              <span
-                                className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                  isActive
-                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                    : p.status === 'DECLINED'
-                                    ? 'bg-red-50 text-red-700 border border-red-200'
-                                    : 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
-                                }`}
-                              >
-                                {isActive ? 'Active' : p.status}
-                              </span>
-                            </td>
-                            <td className="py-4 px-6 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {/* Quick Confirm Match */}
-                                {isProposed && (
-                                  <button
-                                    onClick={() => handleConfirmPair(p.id)}
-                                    disabled={pairActionLoading}
-                                    title="Confirm match & activate 12-week mentoring relationship"
-                                    className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold text-[11px] inline-flex items-center gap-1 transition shadow-2xs"
-                                  >
-                                    <Check className="w-3.5 h-3.5" />
-                                    <span className="hidden sm:inline">Confirm</span>
-                                  </button>
-                                )}
-
-                                {/* Quick Reject Match */}
-                                {isProposed && (
-                                  <button
-                                    onClick={() => handleRejectPair(p.id)}
-                                    disabled={pairActionLoading}
-                                    title="Reject proposed pairing"
-                                    className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold text-[11px] inline-flex items-center gap-1 transition shadow-2xs"
-                                  >
-                                    <X className="w-3.5 h-3.5" />
-                                    <span className="hidden sm:inline">Reject</span>
-                                  </button>
-                                )}
-
-                                {/* Edit / Reassign Mentor */}
-                                <button
-                                  onClick={() => handleOpenEditModal(p)}
-                                  disabled={pairActionLoading}
-                                  title="Change mentor or adjust pairing parameters"
-                                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold text-[11px] inline-flex items-center gap-1 transition"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5 text-slate-600" />
-                                  <span className="hidden md:inline">Edit</span>
-                                </button>
-
-                                {/* Enter Space shortcut if active */}
-                                {isActive && (
-                                  <button
-                                    onClick={() => router.push(`/space/${p.id}`)}
-                                    title="Open 12-week workspace"
-                                    className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px] inline-flex items-center gap-1 transition"
-                                  >
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-
-                                {/* Delete Pair */}
-                                <button
-                                  onClick={() => handleDeletePair(p.id)}
-                                  disabled={pairActionLoading}
-                                  title="Delete pairing"
-                                  className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          <th className="py-3.5 px-6">Mentor</th>
+                          <th className="py-3.5 px-6">Mentee</th>
+                          <th className="py-3.5 px-6">AI Match Score</th>
+                          <th className="py-3.5 px-6">12-Week Sessions</th>
+                          <th className="py-3.5 px-6">Survey Feedback</th>
+                          <th className="py-3.5 px-6">Status</th>
+                          <th className="py-3.5 px-6 text-right">Admin Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {(!dashboardData?.pairs || dashboardData.pairs.length === 0) && unpairedMentees.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="text-center py-10 text-slate-400 font-medium">
+                              No pairings generated yet. Upload candidates, ensure onboarding is complete, and click <strong>"2. Run AI Match"</strong> or <strong>"+ Custom Pairing"</strong>.
                             </td>
                           </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                        ) : (
+                          <>
+                            {/* Active & Proposed Pairings */}
+                            {dashboardData?.pairs?.map((p: any) => {
+                              const completedSessions = p.sessions?.filter((s: any) => s.status === 'COMPLETED').length || 0;
+                              const progressPercent = Math.round((completedSessions / 12) * 100);
+                              const surveyCount = p.surveys?.length || 0;
+                              const isProposed = p.status === 'PROPOSED';
+                              const isActive = p.status === 'ACTIVE';
+
+                              return (
+                                <tr key={p.id} className="hover:bg-slate-50/60 transition">
+                                  <td className="py-4 px-6">
+                                    <div className="flex items-center space-x-2">
+                                      <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-[10px] text-slate-700">
+                                        {getUserInitials(p.mentor?.name)}
+                                      </div>
+                                      <div>
+                                        <span className="font-semibold text-slate-900">{p.mentor?.name}</span>
+                                        <span className="block text-[10px] text-slate-400 font-mono">#{p.mentorCode} &bull; {p.mentor?.department} (DISC: {p.mentor?.discStyle || 'N/A'})</span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-6">
+                                    <div className="flex items-center space-x-2">
+                                      <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">
+                                        {getUserInitials(p.mentee?.name)}
+                                      </div>
+                                      <div>
+                                        <span className="font-semibold text-slate-900">{p.mentee?.name}</span>
+                                        <span className="block text-[10px] text-slate-400 font-mono">#{p.menteeCode} &bull; {p.mentee?.department} (DISC: {p.mentee?.discStyle || 'N/A'})</span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-6">
+                                    <span className="inline-flex items-center gap-1 font-extrabold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md text-xs border border-emerald-200">
+                                      ⚡ {(p.matchScore * 100).toFixed(0)}% Match
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6">
+                                    <div className="space-y-1">
+                                      <div className="flex justify-between text-[11px] font-semibold text-slate-600">
+                                        <span>Week {completedSessions} of 12</span>
+                                        <span>{progressPercent}%</span>
+                                      </div>
+                                      <div className="w-32 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                        <div className="bg-indigo-600 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(progressPercent, 100)}%` }}></div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-6">
+                                    <div className="flex items-center space-x-1 text-amber-500 font-bold">
+                                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                      <span>★ 4.9</span>
+                                      <span className="text-slate-400 font-normal text-[11px]">({surveyCount > 0 ? `${surveyCount} Logged` : 'Pending W6'})</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-6">
+                                    <span
+                                      className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                        isActive
+                                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                          : p.status === 'DECLINED'
+                                          ? 'bg-red-50 text-red-700 border border-red-200'
+                                          : 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
+                                      }`}
+                                    >
+                                      {isActive ? 'Active' : p.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-right">
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      {/* Quick Confirm Match */}
+                                      {isProposed && (
+                                        <button
+                                          onClick={() => handleConfirmPair(p.id)}
+                                          disabled={pairActionLoading}
+                                          title="Confirm match & activate 12-week mentoring relationship"
+                                          className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold text-[11px] inline-flex items-center gap-1 transition shadow-2xs"
+                                        >
+                                          <Check className="w-3.5 h-3.5" />
+                                          <span className="hidden sm:inline">Confirm</span>
+                                        </button>
+                                      )}
+
+                                      {/* Quick Reject Match */}
+                                      {isProposed && (
+                                        <button
+                                          onClick={() => handleRejectPair(p.id)}
+                                          disabled={pairActionLoading}
+                                          title="Reject proposed pairing"
+                                          className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold text-[11px] inline-flex items-center gap-1 transition shadow-2xs"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                          <span className="hidden sm:inline">Reject</span>
+                                        </button>
+                                      )}
+
+                                      {/* Edit / Reassign Mentor */}
+                                      <button
+                                        onClick={() => handleOpenEditModal(p)}
+                                        disabled={pairActionLoading}
+                                        title="Change mentor or adjust pairing parameters"
+                                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold text-[11px] inline-flex items-center gap-1 transition"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                                        <span className="hidden md:inline">Edit</span>
+                                      </button>
+
+                                      {/* Enter Space shortcut if active */}
+                                      {isActive && (
+                                        <button
+                                          onClick={() => router.push(`/space/${p.id}`)}
+                                          title="Open 12-week workspace"
+                                          className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px] inline-flex items-center gap-1 transition"
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+
+                                      {/* Delete Pair */}
+                                      <button
+                                        onClick={() => handleDeletePair(p.id)}
+                                        disabled={pairActionLoading}
+                                        title="Delete pairing"
+                                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* Unpaired Mentees Rows */}
+                            {unpairedMentees.map((m: any) => (
+                              <tr key={m.employeeCode} className="bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-amber-400 transition">
+                                <td className="py-4 px-6">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 font-semibold text-xs border border-amber-300">
+                                    ⚠️ No Mentor Assigned
+                                  </span>
+                                </td>
+                                <td className="py-4 px-6 font-semibold text-slate-900">
+                                  <div className="flex items-center space-x-2">
+                                    <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-[10px]">
+                                      {getUserInitials(m.name)}
+                                    </div>
+                                    <div>
+                                      <span>{m.name}</span>
+                                      <span className="block text-[10px] text-slate-400 font-mono">#{m.employeeCode} &bull; {m.department} (DISC: {m.discStyle || 'Pending'})</span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-6 text-slate-400 italic text-[11px]">
+                                  Pending Mentor Assignment
+                                </td>
+                                <td className="py-4 px-6 text-slate-400 text-[11px]">
+                                  —
+                                </td>
+                                <td className="py-4 px-6 text-slate-400 text-[11px]">
+                                  —
+                                </td>
+                                <td className="py-4 px-6">
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-200 text-amber-900 border border-amber-300 uppercase">
+                                    UNPAIRED
+                                  </span>
+                                </td>
+                                <td className="py-4 px-6 text-right">
+                                  <button
+                                    onClick={() => handleOpenCreateModal(m.employeeCode)}
+                                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs inline-flex items-center gap-1 shadow transition"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>+ Assign Mentor</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 

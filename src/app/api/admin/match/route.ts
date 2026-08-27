@@ -11,9 +11,9 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized. Admin access required.' }, { status: 401 });
     }
 
-    // Get matching cohort or auto-create a rolling 3-month cohort
+    // Get latest cohort or auto-create a rolling 3-month cohort
     let cohort = await prisma.cohort.findFirst({
-      where: { status: 'MATCHING' },
+      orderBy: { startDate: 'desc' },
     });
 
     if (!cohort) {
@@ -31,10 +31,8 @@ export async function POST() {
       });
     }
 
-    // Delete existing pairings for this cohort to prevent duplicate pairing collisions
-    await prisma.mentoringPair.deleteMany({
-      where: { cohortId: cohort.id },
-    });
+    // Clear previous pairs to ensure clean re-computation for all candidates
+    await prisma.mentoringPair.deleteMany({});
 
     // Load Mentees and Mentors
     const mentees = await prisma.employee.findMany({ where: { role: 'MENTEE' } });
