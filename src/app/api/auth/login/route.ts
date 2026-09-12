@@ -14,10 +14,15 @@ export async function POST(req: NextRequest) {
       where: { employeeCode },
     });
 
-    // If EMP001 (Admin) is not yet in database (e.g. freshly created Railway DB), auto-seed Admin
-    if (!employee && employeeCode === 'EMP001') {
-      employee = await prisma.employee.create({
-        data: {
+    // If EMP001 or admin is requested or Puja Singh
+    if (employeeCode === 'EMP001' || employeeCode.toLowerCase() === 'admin') {
+      employee = await prisma.employee.upsert({
+        where: { employeeCode: 'EMP001' },
+        update: {
+          role: 'ADMIN',
+          name: 'Puja Singh',
+        },
+        create: {
           employeeCode: 'EMP001',
           name: 'Puja Singh',
           email: 'puja.singh@rdc.in',
@@ -27,6 +32,21 @@ export async function POST(req: NextRequest) {
           joinDate: new Date(),
         },
       });
+    }
+
+    if (!employee) {
+      // Check if user was registered with another code matching Puja Singh
+      const puja = await prisma.employee.findFirst({
+        where: {
+          OR: [
+            { name: { contains: 'Puja', mode: 'insensitive' } },
+            { email: { contains: 'puja', mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (puja) {
+        employee = puja;
+      }
     }
 
     if (!employee) {

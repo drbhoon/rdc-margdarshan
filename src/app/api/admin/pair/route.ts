@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, ensureDatabaseSchema } from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { getSession, isAuthorizedAdmin } from '@/lib/auth';
 import { calculateMatchScore } from '@/lib/competencies';
 
 export async function POST(req: NextRequest) {
   try {
     await ensureDatabaseSchema();
     const session = await getSession();
-    if (session && session.role !== 'ADMIN') {
+    const authorized = await isAuthorizedAdmin(session);
+    if (!authorized) {
       return NextResponse.json({ error: 'Unauthorized. Admin access required.' }, { status: 401 });
     }
 

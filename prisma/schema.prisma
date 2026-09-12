@@ -186,3 +186,5 @@ model AuditLog {
   details          String
   timestamp        DateTime           @default(now())
 }
+
+
