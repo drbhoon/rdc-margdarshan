@@ -1,87 +1,61 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { getSession } from '@/lib/auth';
-
-export async function GET() {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const employee = await prisma.employee.findUnique({
-      where: { employeeCode: session.employeeCode },
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth";
+import {
+  protectedRoute,
+  textValue,
+  AccessError,
+  logChange,
+} from "@/lib/access";
+export const GET = protectedRoute(async (_req: NextRequest) => {
+  const user = (await getSession())!;
+  const employee = await prisma.employee.findUniqueOrThrow({
+    where: { employeeCode: user.employeeCode },
+    omit: { googleSubject: true },
+  });
+  return NextResponse.json({ employee: { ...employee, role: user.role } });
+});
+export const PUT = protectedRoute(async (req: NextRequest) => {
+  const user = (await getSession())!,
+    body = await req.json();
+  const array = (value: unknown) => {
+    if (!Array.isArray(value) || value.length > 30)
+      throw new AccessError(400, "Choose up to 30 priorities.");
+    return value.map((v) => textValue(v, 500));
+  };
+  const data = {
+    careerGoals: textValue(body.careerGoals ?? ""),
+    topics: array(body.topics ?? []),
+    challenges: array(body.challenges ?? []),
+    availability: textValue(body.availability ?? "", 2000),
+    commStyleNotes: textValue(body.commStyleNotes ?? ""),
+    isConsentShared: body.isConsentShared === true,
+  };
+  const employee = await prisma.$transaction(async (tx) => {
+    const before = await tx.employee.findUniqueOrThrow({
+      where: { employeeCode: user.employeeCode },
+      omit: { googleSubject: true },
     });
-
-    if (!employee) {
-      return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
-    }
-
-    return NextResponse.json({
-      employee: {
-        employeeCode: employee.employeeCode,
-        email: employee.email,
-        name: employee.name,
-        role: employee.role,
-        department: employee.department,
-        designation: employee.designation,
-        discStyle: employee.discStyle,
-        isConsentShared: employee.isConsentShared,
-        careerGoals: employee.careerGoals,
-        topics: employee.topics || [],
-        challenges: employee.challenges || [],
-        availability: employee.availability,
-        commStyleNotes: employee.commStyleNotes,
+    const after = await tx.employee.update({
+      where: { employeeCode: user.employeeCode },
+      data,
+      omit: { googleSubject: true },
+    });
+    await logChange(tx, user, "UPDATE_PROFILE", {
+      employeeCode: user.employeeCode,
+      before: {
+        careerGoals: before.careerGoals,
+        topics: before.topics,
+        challenges: before.challenges,
+        availability: before.availability,
+        commStyleNotes: before.commStyleNotes,
       },
+      after: data,
     });
-  } catch (error) {
-    console.error('Profile fetch error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
-
-export async function PUT(req: NextRequest) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await req.json();
-    const { careerGoals, topics, challenges, availability, commStyleNotes, isConsentShared } = body;
-
-    const employee = await prisma.employee.update({
-      where: { employeeCode: session.employeeCode },
-      data: {
-        careerGoals,
-        topics: Array.isArray(topics) ? topics : [],
-        challenges: Array.isArray(challenges) ? challenges : [],
-        availability,
-        commStyleNotes,
-        isConsentShared: !!isConsentShared,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      user: {
-        employeeCode: employee.employeeCode,
-        email: employee.email,
-        name: employee.name,
-        role: employee.role,
-        department: employee.department,
-        designation: employee.designation,
-        discStyle: employee.discStyle,
-        isConsentShared: employee.isConsentShared,
-        careerGoals: employee.careerGoals,
-        topics: employee.topics,
-        challenges: employee.challenges || [],
-        availability: employee.availability,
-        commStyleNotes: employee.commStyleNotes,
-      },
-    });
-  } catch (error) {
-    console.error('Profile update error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+    return after;
+  });
+  return NextResponse.json({
+    success: true,
+    user: { ...employee, role: user.role },
+  });
+});

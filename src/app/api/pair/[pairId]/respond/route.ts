@@ -1,114 +1,70 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import {
+  protectedRoute,
+  pairWrite,
+  logChange,
+  AccessError,
+  textValue,
+} from "@/lib/access";
+type Context = { params: Promise<{ pairId: string }> };
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ pairId: string }> }
-) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+export const POST = protectedRoute(
+  async (req: NextRequest, { params }: Context) => {
+    const user = (await getSession())!;
     const { pairId } = await params;
-    const { action, declineReason } = await req.json();
-
-    if (action !== 'ACCEPT' && action !== 'DECLINE') {
-      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-    }
-
-    const pair = await prisma.mentoringPair.findUnique({
-      where: { id: pairId },
-      include: { cohort: true, mentee: true, mentor: true },
-    });
-
-    if (!pair) {
-      return NextResponse.json({ error: 'Pairing not found' }, { status: 404 });
-    }
-
-    // Verify user is part of the pair
-    const isMentee = pair.menteeCode === session.employeeCode;
-    const isMentor = pair.mentorCode === session.employeeCode;
-
-    if (!isMentee && !isMentor) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    if (action === 'DECLINE') {
-      await prisma.mentoringPair.update({
+    const body = await req.json();
+    if (!["ACCEPT", "DECLINE"].includes(body.action))
+      throw new AccessError(400, "Invalid response.");
+    const result = await pairWrite(pairId, user, async (tx, pair) => {
+      const mentor = pair.mentorCode === user.employeeCode,
+        mentee = pair.menteeCode === user.employeeCode;
+      if (!mentor && !mentee)
+        throw new AccessError(403, "Only the mentor and mentee can respond.");
+      if (!["PROPOSED", "PENDING_ACCEPTANCE", "ACCEPTED"].includes(pair.status))
+        throw new AccessError(
+          409,
+          "This invitation is no longer awaiting acceptance.",
+        );
+      const mentorAcceptedAt = mentor ? new Date() : pair.mentorAcceptedAt;
+      const menteeAcceptedAt = mentee ? new Date() : pair.menteeAcceptedAt;
+      const status =
+        body.action === "DECLINE"
+          ? "DECLINED"
+          : mentorAcceptedAt && menteeAcceptedAt
+            ? "ACTIVE"
+            : "PENDING_ACCEPTANCE";
+      const result = await tx.mentoringPair.update({
         where: { id: pairId },
-        data: {
-          status: 'DECLINED',
-          declineReason: declineReason || 'Declined by counterpart',
-        },
+        data:
+          body.action === "DECLINE"
+            ? {
+                status,
+                declineReason: textValue(body.declineReason ?? ""),
+                version: { increment: 1 },
+              }
+            : {
+                status,
+                mentorAcceptedAt,
+                menteeAcceptedAt,
+                version: { increment: 1 },
+              },
       });
-
-      await prisma.auditLog.create({
-        data: {
-          performedByCode: session.employeeCode,
-          action: 'PAIR_DECLINED',
-          details: `Pairing ${pairId} declined by ${session.name}. Reason: ${declineReason}`,
-        },
+      if (status === "ACTIVE")
+        await tx.session.createMany({
+          data: Array.from({ length: 13 }, (_, weekNumber) => ({
+            pairId,
+            weekNumber,
+          })),
+          skipDuplicates: true,
+        });
+      await logChange(tx, user, "PAIR_RESPONSE", {
+        pairId,
+        action: body.action,
+        status,
       });
-
-      return NextResponse.json({ success: true, status: 'DECLINED' });
-    }
-
-    // If action is ACCEPT, check status.
-    // If it's PROPOSED, we can set it to PENDING_ACCEPTANCE (one accepted, waiting for other)
-    // If it's PENDING_ACCEPTANCE, we set it to ACTIVE (both accepted) and create sessions
-    let newStatus = pair.status;
-
-    if (pair.status === 'PROPOSED') {
-      newStatus = 'PENDING_ACCEPTANCE';
-    } else if (pair.status === 'PENDING_ACCEPTANCE') {
-      newStatus = 'ACTIVE';
-
-      // Initialize the 12-week sessions (Week 0 to Week 12 = 13 sessions)
-      const sessionCreations = Array.from({ length: 13 }, (_, i) => ({
-        weekNumber: i,
-        status: 'SCHEDULED' as const,
-      }));
-
-      await prisma.mentoringPair.update({
-        where: { id: pairId },
-        data: {
-          status: newStatus,
-          sessions: {
-            create: sessionCreations,
-          },
-        },
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          performedByCode: session.employeeCode,
-          action: 'PAIR_ACTIVATED',
-          details: `Pairing ${pairId} between ${pair.mentor.name} and ${pair.mentee.name} activated. 13 sessions initialized.`,
-        },
-      });
-
-      return NextResponse.json({ success: true, status: newStatus });
-    }
-
-    await prisma.mentoringPair.update({
-      where: { id: pairId },
-      data: { status: newStatus },
+      return result;
     });
-
-    await prisma.auditLog.create({
-      data: {
-        performedByCode: session.employeeCode,
-        action: 'PAIR_ACCEPTED_PARTIAL',
-        details: `Pairing ${pairId} accepted by ${session.name}. Waiting for counterpart.`,
-      },
-    });
-
-    return NextResponse.json({ success: true, status: newStatus });
-  } catch (error: any) {
-    console.error('Response API error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+    return NextResponse.json({ success: true, status: result.status });
+  },
+);

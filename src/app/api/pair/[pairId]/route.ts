@@ -1,88 +1,37 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma, ensureDatabaseSchema } from '@/lib/db';
-import { getSession } from '@/lib/auth';
-
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ pairId: string }> }
-) {
-  try {
-    await ensureDatabaseSchema();
-    const session = await getSession().catch(() => null);
-
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { protectedRoute } from "@/lib/access";
+export const GET = protectedRoute(
+  async (
+    _req: NextRequest,
+    { params }: { params: Promise<{ pairId: string }> },
+  ) => {
     const { pairId } = await params;
-
-    const pair = await prisma.mentoringPair.findUnique({
+    const pair = await prisma.mentoringPair.findUniqueOrThrow({
       where: { id: pairId },
       include: {
-        mentee: true,
-        mentor: true,
+        mentor: { omit: { googleSubject: true } },
+        mentee: { omit: { googleSubject: true } },
         cohort: true,
         sessions: {
-          orderBy: { weekNumber: 'asc' },
+          orderBy: { weekNumber: "asc" },
           include: { actionItems: true },
         },
-        notebooks: {
-          orderBy: { updatedAt: 'desc' },
-        },
+        notebooks: { orderBy: { updatedAt: "desc" } },
+        learningNotes: { orderBy: { createdAt: "desc" } },
+        surveys: true,
+        coachingMessages: { orderBy: { createdAt: "asc" } },
       },
     });
-
-    if (!pair) {
-      return NextResponse.json({ error: 'Pairing not found' }, { status: 404 });
-    }
-
-    // Sanitize any outdated or invalid Google Meet links
-    const cleanPairId = pair.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
-    const sanitizedSessions = pair.sessions.map((s) => {
-      let link = s.googleMeetLink;
-      if (!link || link.includes('ksb-meet') || link.includes('meet.google.com/ksb-')) {
-        link = `https://meet.jit.si/Margdarshan-${cleanPairId}-Week${s.weekNumber}`;
-        // Asynchronously update in DB so future queries are fixed
-        prisma.session.update({
-          where: { id: s.id },
-          data: { googleMeetLink: link },
-        }).catch(() => {});
-      }
-      return {
-        ...s,
-        googleMeetLink: link,
-      };
-    });
-
-    // Fetch action items for this pair
     const actionItems = await prisma.actionItem.findMany({
-      where: {
-        sessionId: {
-          in: pair.sessions.map((s) => s.id),
-        },
-      },
-      include: {
-        assignee: true,
-      },
-      orderBy: { dueDate: 'asc' },
-    }).catch(() => []);
-
-    // Fetch private notes of this user if session exists
-    const privateNotes = session?.employeeCode
-      ? await prisma.privateNote.findMany({
-          where: {
-            employeeCode: session.employeeCode,
-          },
-          orderBy: { createdAt: 'desc' },
-        }).catch(() => [])
-      : [];
-
-    return NextResponse.json({
-      pair: {
-        ...pair,
-        sessions: sanitizedSessions,
-      },
-      actionItems,
-      privateNotes,
+      where: { session: { pairId } },
+      include: { assignee: { omit: { googleSubject: true } } },
+      orderBy: { dueDate: "asc" },
     });
-  } catch (error) {
-    console.error('Fetch pair error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+    return NextResponse.json({
+      pair,
+      actionItems,
+      privateNotes: pair.learningNotes,
+    });
+  },
+);

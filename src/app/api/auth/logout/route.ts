@@ -1,13 +1,19 @@
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-
-export async function POST() {
+import { NextRequest, NextResponse } from "next/server";
+import { revokeSession } from "@/lib/auth";
+import { appOrigin } from "@/lib/auth-policy";
+export async function POST(req: NextRequest) {
+  if (req.headers.get("origin") !== appOrigin())
+    return NextResponse.json(
+      { error: "Invalid request origin" },
+      { status: 403 },
+    );
   try {
-    const cookieStore = await cookies();
-    cookieStore.delete('token');
+    await revokeSession();
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error('Logout error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch {
+    return NextResponse.json(
+      { error: "Unable to end your session. Please retry." },
+      { status: 503 },
+    );
   }
 }

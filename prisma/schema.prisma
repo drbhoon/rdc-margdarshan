@@ -15,6 +15,9 @@ model Employee {
   designation      String
   joinDate         DateTime
   role             Role               @default(MENTEE)
+  googleSubject    String?            @unique
+  isActive         Boolean            @default(true)
+  authSessions     AuthSession[]
   
   // Profile Setup
   discStyle        String?            
@@ -73,9 +76,18 @@ model MentoringPair {
   matchScore       Float
   declineReason    String?
   
-  sharedGoals      String?            
+  sharedGoals      String?
+  version          Int                @default(0)
+  isOffRecord      Boolean            @default(false)
+  resumeMentor     Boolean            @default(false)
+  resumeMentee     Boolean            @default(false)
+  mentorAcceptedAt DateTime?
+  menteeAcceptedAt DateTime?
   sessions         Session[]
   notebooks        SharedNotebook[]
+  surveys          SurveyFeedback[]
+  learningNotes    PrivateNote[]
+  coachingMessages CoachingMessage[]
   
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
@@ -99,6 +111,9 @@ model Session {
   googleMeetLink             String?
   calendarEventId            String?
   status                     SessionStatus      @default(SCHEDULED)
+  version                    Int                @default(0)
+  agenda                     String?
+  updatedAt                  DateTime           @default(now()) @updatedAt
   
   preSessionNotes            String?            
   discussionPoints           String?
@@ -112,6 +127,7 @@ model Session {
   postSessionReflectionMentor String?
   
   actionItems                ActionItem[]
+  @@unique([pairId, weekNumber])
 }
 
 enum SessionStatus {
@@ -135,6 +151,8 @@ model PrivateNote {
   employeeCode     String
   employee         Employee           @relation(fields: [employeeCode], references: [employeeCode], onDelete: Cascade)
   content          String
+  pairId           String?
+  pair             MentoringPair? @relation(fields: [pairId], references: [id], onDelete: Restrict)
   createdAt        DateTime           @default(now())
 }
 
@@ -148,6 +166,10 @@ model ActionItem {
   description      String?
   dueDate          DateTime
   status           ActionStatus       @default(PENDING)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @default(now()) @updatedAt
+  completedAt      DateTime?
+  evidence         String?
 }
 
 enum ActionStatus {
@@ -172,19 +194,43 @@ model SurveyFeedback {
   id               String             @id @default(uuid())
   employeeCode     String
   employee         Employee           @relation(fields: [employeeCode], references: [employeeCode], onDelete: Cascade)
+  pairId           String?
+  pair             MentoringPair? @relation(fields: [pairId], references: [id], onDelete: Restrict)
   weekNumber       Int                
   growthRating     Int                
   feedbackText     String
   createdAt        DateTime           @default(now())
+  @@unique([pairId, employeeCode, weekNumber])
 }
 
 model AuditLog {
   id               String             @id @default(uuid())
-  performedByCode  String
-  employee         Employee           @relation(fields: [performedByCode], references: [employeeCode], onDelete: Cascade)
+  performedByCode  String?
+  employee         Employee?          @relation(fields: [performedByCode], references: [employeeCode], onDelete: SetNull)
   action           String             
   details          String
   timestamp        DateTime           @default(now())
 }
 
+model AuthSession {
+  tokenHash        String   @id
+  employeeCode     String
+  employee         Employee @relation(fields: [employeeCode], references: [employeeCode], onDelete: Cascade)
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  @@index([employeeCode])
+  @@index([expiresAt])
+}
+
+model CoachingMessage {
+  id            String @id @default(uuid())
+  pairId        String
+  pair          MentoringPair @relation(fields: [pairId], references: [id], onDelete: Restrict)
+  employeeCode  String
+  weekNumber    Int
+  question      String
+  answer        String
+  mode          String
+  createdAt     DateTime @default(now())
+}
 

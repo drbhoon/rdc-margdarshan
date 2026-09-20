@@ -1,29 +1,38 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { protectedRoute, logChange } from "@/lib/access";
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth";
 
-export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { answers } = await req.json();
-    if (!answers || !Array.isArray(answers)) {
-      return NextResponse.json({ error: 'Invalid answers format' }, { status: 400 });
+    if (
+      !Array.isArray(answers) ||
+      answers.length !== 5 ||
+      answers.some((a: unknown) => !["D", "I", "S", "C"].includes(String(a)))
+    ) {
+      return NextResponse.json(
+        { error: "Invalid answers format" },
+        { status: 400 },
+      );
     }
 
     // Answers format: array of strings containing dimension chosen ('D', 'I', 'S', 'C') for each question
     const counts = { D: 0, I: 0, S: 0, C: 0 };
     answers.forEach((ans: string) => {
-      if (ans === 'D' || ans === 'I' || ans === 'S' || ans === 'C') {
+      if (ans === "D" || ans === "I" || ans === "S" || ans === "C") {
         counts[ans] = (counts[ans] || 0) + 1;
       }
     });
 
-    const total = Object.values(counts).reduce((acc, curr) => acc + curr, 0) || 1;
-    
+    const total =
+      Object.values(counts).reduce((acc, curr) => acc + curr, 0) || 1;
+
     // Convert to percentages
     const dominantPct = Math.round((counts.D / total) * 100);
     const influencePct = Math.round((counts.I / total) * 100);
@@ -39,8 +48,8 @@ export async function POST(req: NextRequest) {
 
     // Find the highest-scoring category
     let maxVal = -1;
-    let discStyle = 'S'; // Default fallback
-    
+    let discStyle = "S"; // Default fallback
+
     Object.entries(counts).forEach(([key, val]) => {
       if (val > maxVal) {
         maxVal = val;
@@ -55,12 +64,20 @@ export async function POST(req: NextRequest) {
     }
 
     // Update employee profile in DB
-    const employee = await prisma.employee.update({
-      where: { employeeCode: session.employeeCode },
-      data: {
-        discStyle,
-        discRawResponse,
-      },
+    const employee = await prisma.$transaction(async (tx) => {
+      const before = await tx.employee.findUniqueOrThrow({
+        where: { employeeCode: session.employeeCode },
+      });
+      const after = await tx.employee.update({
+        where: { employeeCode: session.employeeCode },
+        data: { discStyle, discRawResponse },
+      });
+      await logChange(tx, session, "UPDATE_COMMUNICATION_REFLECTION", {
+        employeeCode: session.employeeCode,
+        before: before.discRawResponse,
+        after: discRawResponse,
+      });
+      return after;
     });
 
     return NextResponse.json({
@@ -68,7 +85,12 @@ export async function POST(req: NextRequest) {
       discRawResponse: employee.discRawResponse,
     });
   } catch (error) {
-    console.error('DISC generation error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error("DISC generation error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
+
+export const POST = protectedRoute(handlePOST);

@@ -1,48 +1,72 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { getSession } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import {
+  protectedRoute,
+  pairWrite,
+  logChange,
+  AccessError,
+  textValue,
+} from "@/lib/access";
+type Context = { params: Promise<{ pairId: string }> };
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ pairId: string }> }
-) {
-  try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+export const POST = protectedRoute(
+  async (req: NextRequest, { params }: Context) => {
+    const user = (await getSession())!;
     const { pairId } = await params;
-    const { weekNumber, growthRating, feedbackText } = await req.json();
-
-    if (weekNumber !== 6 && weekNumber !== 12) {
-      return NextResponse.json({ error: 'Feedback is only required for Week 6 and Week 12.' }, { status: 400 });
-    }
-
-    if (!growthRating || growthRating < 1 || growthRating > 5) {
-      return NextResponse.json({ error: 'Growth rating must be between 1 and 5.' }, { status: 400 });
-    }
-
-    const feedback = await prisma.surveyFeedback.create({
-      data: {
-        employeeCode: session.employeeCode,
-        weekNumber,
+    const body = await req.json();
+    const { weekNumber, growthRating } = body;
+    if (
+      ![6, 12].includes(weekNumber) ||
+      !Number.isInteger(growthRating) ||
+      growthRating < 1 ||
+      growthRating > 5
+    )
+      throw new AccessError(
+        400,
+        "Choose week 6 or 12 and an integer rating from 1 to 5.",
+      );
+    const feedback = await pairWrite(pairId, user, async (tx, pair) => {
+      if (![pair.mentorCode, pair.menteeCode].includes(user.employeeCode))
+        throw new AccessError(
+          403,
+          "Only participants can submit their own feedback.",
+        );
+      const previous = await tx.surveyFeedback.findUnique({
+        where: {
+          pairId_employeeCode_weekNumber: {
+            pairId,
+            employeeCode: user.employeeCode,
+            weekNumber,
+          },
+        },
+      });
+      const data = {
         growthRating,
-        feedbackText: feedbackText || '',
-      },
+        feedbackText: textValue(body.feedbackText ?? ""),
+      };
+      const result = await tx.surveyFeedback.upsert({
+        where: {
+          pairId_employeeCode_weekNumber: {
+            pairId,
+            employeeCode: user.employeeCode,
+            weekNumber,
+          },
+        },
+        create: {
+          pairId,
+          employeeCode: user.employeeCode,
+          weekNumber,
+          ...data,
+        },
+        update: data,
+      });
+      await logChange(tx, user, "SUBMIT_SURVEY", {
+        pairId,
+        before: previous,
+        after: result,
+      });
+      return result;
     });
-
-    await prisma.auditLog.create({
-      data: {
-        performedByCode: session.employeeCode,
-        action: 'SUBMIT_SURVEY',
-        details: `Week ${weekNumber} survey feedback submitted by ${session.name}. Rating: ${growthRating}/5`,
-      },
-    });
-
     return NextResponse.json({ success: true, feedback });
-  } catch (error) {
-    console.error('Submit feedback error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+  },
+);

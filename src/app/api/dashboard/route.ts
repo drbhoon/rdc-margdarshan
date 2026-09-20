@@ -1,104 +1,59 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma, ensureDatabaseSchema } from '@/lib/db';
-import { getSession } from '@/lib/auth';
-
-export async function GET() {
-  try {
-    await ensureDatabaseSchema();
-    const session = await getSession();
-    const role = session?.role || 'ADMIN';
-    const employeeCode = session?.employeeCode || 'EMP001';
-
-    if (role === 'ADMIN') {
-      try {
-        const cohorts = await prisma.cohort.findMany({
-          orderBy: { startDate: 'desc' },
-        }).catch(() => []);
-
-        const allEmployees = await prisma.employee.findMany({
-          where: { role: { in: ['MENTEE', 'MENTOR'] } },
-          orderBy: [{ role: 'asc' }, { name: 'asc' }],
-        }).catch(() => []);
-
-        const totalMentees = allEmployees.filter((e) => e.role === 'MENTEE').length;
-        const totalMentors = allEmployees.filter((e) => e.role === 'MENTOR').length;
-
-        const pairs = await prisma.mentoringPair.findMany({
-          include: {
-            mentee: true,
-            mentor: true,
-            cohort: true,
-            sessions: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        }).catch(() => []);
-
-        const allSurveys = await prisma.surveyFeedback.findMany().catch(() => []);
-
-        return NextResponse.json({
-          cohorts,
-          totalMentees,
-          totalMentors,
-          allEmployees,
-          pairs,
-          allSurveys,
-        });
-      } catch (dbErr) {
-        console.error('Admin dashboard DB query error:', dbErr);
-        return NextResponse.json({
-          cohorts: [],
-          totalMentees: 0,
-          totalMentors: 0,
-          allEmployees: [],
-          pairs: [],
-          allSurveys: [],
-        });
-      }
-    } else {
-      try {
-        const pairs = await prisma.mentoringPair.findMany({
-          where: {
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth";
+import { protectedRoute } from "@/lib/access";
+import { effectiveRole } from "@/lib/auth-policy";
+export const GET = protectedRoute(async (_req: NextRequest) => {
+  const user = (await getSession())!;
+  const pairs = await prisma.mentoringPair.findMany({
+    where:
+      user.role === "ADMIN"
+        ? {}
+        : {
             OR: [
-              { menteeCode: employeeCode },
-              { mentorCode: employeeCode },
+              { menteeCode: user.employeeCode },
+              { mentorCode: user.employeeCode },
             ],
-            status: {
-              in: ['PROPOSED', 'PENDING_ACCEPTANCE', 'ACCEPTED', 'ACTIVE', 'DECLINED'],
-            },
           },
-          include: {
-            mentee: true,
-            mentor: true,
-            cohort: true,
-            sessions: {
-              orderBy: { weekNumber: 'asc' },
-            },
-          },
-          orderBy: { createdAt: 'desc' },
-        }).catch(() => []);
-
-        const pair = pairs[0] || null;
-
-        const actionItems = await prisma.actionItem.findMany({
-          where: { employeeCode, status: { not: 'COMPLETED' } },
-          orderBy: { dueDate: 'asc' },
-        }).catch(() => []);
-
-        return NextResponse.json({ pair, pairs, actionItems });
-      } catch (dbErr) {
-        console.error('User dashboard DB query error:', dbErr);
-        return NextResponse.json({ pair: null, pairs: [], actionItems: [] });
-      }
-    }
-  } catch (error) {
-    console.error('Dashboard data fetch error:', error);
+    include: {
+      mentor: { omit: { googleSubject: true } },
+      mentee: { omit: { googleSubject: true } },
+      cohort: true,
+      sessions: { orderBy: { weekNumber: "asc" } },
+      surveys: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (user.role === "ADMIN") {
+    const [cohorts, employees, allSurveys, legacyNotes] = await Promise.all([
+      prisma.cohort.findMany({ orderBy: { startDate: "desc" } }),
+      prisma.employee.findMany({
+        omit: { googleSubject: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.surveyFeedback.findMany(),
+      prisma.privateNote.findMany({
+        where: { pairId: null },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    const allEmployees = employees.map((e) => ({
+      ...e,
+      role: effectiveRole(e),
+    }));
     return NextResponse.json({
-      cohorts: [],
-      totalMentees: 0,
-      totalMentors: 0,
-      allEmployees: [],
-      pairs: [],
-      allSurveys: [],
+      pairs,
+      cohorts,
+      allEmployees,
+      allSurveys,
+      legacyNotes,
+      totalMentees: allEmployees.filter((e) => e.role === "MENTEE").length,
+      totalMentors: allEmployees.filter((e) => e.role === "MENTOR").length,
     });
   }
-}
+  const actionItems = await prisma.actionItem.findMany({
+    where: { employeeCode: user.employeeCode, status: { not: "COMPLETED" } },
+    orderBy: { dueDate: "asc" },
+  });
+  return NextResponse.json({ pair: pairs[0] ?? null, pairs, actionItems });
+});
