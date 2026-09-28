@@ -23,7 +23,7 @@ export const PUT = protectedRoute(async (req: NextRequest) => {
       throw new AccessError(400, "Choose up to 30 priorities.");
     return value.map((v) => textValue(v, 500));
   };
-  const data = {
+  const data: Record<string, unknown> = {
     careerGoals: textValue(body.careerGoals ?? ""),
     topics: array(body.topics ?? []),
     challenges: array(body.challenges ?? []),
@@ -31,6 +31,12 @@ export const PUT = protectedRoute(async (req: NextRequest) => {
     commStyleNotes: textValue(body.commStyleNotes ?? ""),
     isConsentShared: body.isConsentShared === true,
   };
+  if (body.highestQualification !== undefined) {
+    data.highestQualification = textValue(body.highestQualification ?? "", 200) || null;
+  }
+  if (body.location !== undefined) {
+    data.location = textValue(body.location ?? "", 200) || null;
+  }
   const employee = await prisma.$transaction(async (tx) => {
     const before = await tx.employee.findUniqueOrThrow({
       where: { employeeCode: user.employeeCode },

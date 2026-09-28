@@ -9,8 +9,21 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { getDiscDetails, getHarmonyAdvice } from "@/lib/disc-guide";
 
-type Person = { employeeCode: string; name: string; designation: string };
+type Person = {
+  employeeCode: string;
+  name: string;
+  designation: string;
+  department?: string | null;
+  discStyle?: string | null;
+  highestQualification?: string | null;
+  location?: string | null;
+  email?: string;
+  topics?: string[];
+  challenges?: string[];
+  availability?: string | null;
+};
 type SessionRecord = {
   id: string;
   weekNumber: number;
@@ -159,6 +172,20 @@ function SessionEditor({
       dirtyChanged(record.id, false);
     }
   }
+
+  function generateMeetLink() {
+    const room = `rdc-${Math.random().toString(36).substring(2, 6)}-${Math.random().toString(36).substring(2, 6)}`;
+    const meetUrl = `https://meet.google.com/${room}`;
+    if (form.current) {
+      const input = form.current.elements.namedItem("googleMeetLink") as HTMLInputElement;
+      if (input) {
+        input.value = meetUrl;
+        setDirty(true);
+        dirtyChanged(record.id, true);
+      }
+    }
+  }
+
   return (
     <form
       ref={form}
@@ -185,15 +212,41 @@ function SessionEditor({
             />
           </label>
           <label>
-            Meeting link / बैठक का लिंक
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>Meeting link / बैठक का लिंक</span>
+              <button
+                type="button"
+                className="secondary"
+                style={{ fontSize: 11, padding: "2px 8px", margin: 0 }}
+                onClick={generateMeetLink}
+              >
+                ✨ Generate Meet Link
+              </button>
+            </div>
             <input
               type="url"
               name="googleMeetLink"
-              placeholder="https://"
+              placeholder="https://meet.google.com/..."
               defaultValue={base.googleMeetLink ?? ""}
             />
           </label>
         </div>
+        {base.googleMeetLink && (
+          <div style={{ marginBottom: 12 }}>
+            <a
+              href={base.googleMeetLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="button"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 14px" }}
+            >
+              📹 Open Google Meet Call
+            </a>
+          </div>
+        )}
+        <p className="muted" style={{ fontSize: 11, margin: "4px 0 12px 0" }}>
+          📧 <em>Auto-Email: Saving a meeting time or Meet link dispatches automated invitations. Marking a session as COMPLETED sends post-session reflections and feedback prompts to both participants.</em>
+        </p>
         <label>
           Session status
           <select name="status" defaultValue={base.status}>
@@ -468,6 +521,7 @@ export default function MentoringSpace() {
         {[
           "Session",
           "Actions",
+          "DISC & Harmony",
           "Learning journal",
           "Notebook",
           "AI coach",
@@ -608,6 +662,88 @@ export default function MentoringSpace() {
             <button>Add action</button>
           </fieldset>
         </form>
+      </section>
+      <section className="card" hidden={tab !== "DISC & Harmony"}>
+        <h2>DISC Behavioral Harmony &amp; Collaboration Guide</h2>
+        <p className="muted">
+          DISC behavioral styles offer insights into communication pacing, decision-making, and workplace motivations at RDC Concrete plants and sites.
+        </p>
+
+        {(() => {
+          const mentorDisc = getDiscDetails(pair.mentor.discStyle);
+          const menteeDisc = getDiscDetails(pair.mentee.discStyle);
+          const harmony = getHarmonyAdvice(pair.mentor.discStyle, pair.mentee.discStyle);
+
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 16 }}>
+              {/* Synergy Header */}
+              <div className="record" style={{ backgroundColor: "#f0fdf4", borderColor: "#bbf7d0" }}>
+                <h3 style={{ color: "#166534", margin: "0 0 6px 0" }}>{harmony.title}</h3>
+                <p style={{ fontWeight: "bold", fontSize: 13, color: "#15803d", margin: "0 0 8px 0" }}>
+                  Rating: {harmony.harmonyScore}
+                </p>
+                <p style={{ fontSize: 13, color: "#1e293b", margin: "0 0 10px 0" }}>{harmony.advice}</p>
+                <div style={{ fontSize: 12, color: "#334155" }}>
+                  <strong>Collaboration Rules of Thumb:</strong>
+                  <ul style={{ margin: "6px 0 0 0", paddingLeft: 20 }}>
+                    {harmony.tips.map((tip, idx) => (
+                      <li key={idx} style={{ marginBottom: 4 }}>{tip}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Side-by-side Profiles */}
+              <div className="grid">
+                {/* Mentor Card */}
+                <article className="record" style={{ backgroundColor: "#f8fafc" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 11, fontWeight: "bold", color: "#64748b", textTransform: "uppercase" }}>
+                      Mentor Profile
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: "bold", padding: "2px 8px", borderRadius: 4, backgroundColor: "#e2e8f0" }}>
+                      Style: {pair.mentor.discStyle || "Not recorded"}
+                    </span>
+                  </div>
+                  <h3 style={{ margin: "8px 0 2px 0" }}>{pair.mentor.name}</h3>
+                  <p className="muted" style={{ fontSize: 12, margin: "0 0 8px 0" }}>
+                    {mentorDisc.name} · <span lang="hi">{mentorDisc.hindiName}</span>
+                  </p>
+                  <p style={{ fontSize: 13, margin: "0 0 8px 0" }}>{mentorDisc.overview}</p>
+                  <div style={{ fontSize: 12, marginTop: 8 }}>
+                    <strong>Communication Preference:</strong>
+                    <p style={{ margin: "2px 0 8px 0", color: "#475569" }}>{mentorDisc.communicationStyle}</p>
+                    <strong>Mentoring Role:</strong>
+                    <p style={{ margin: "2px 0 0 0", color: "#475569" }}>{mentorDisc.mentoringAdvice.asMentor}</p>
+                  </div>
+                </article>
+
+                {/* Mentee Card */}
+                <article className="record" style={{ backgroundColor: "#f8fafc" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 11, fontWeight: "bold", color: "#64748b", textTransform: "uppercase" }}>
+                      Mentee Profile
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: "bold", padding: "2px 8px", borderRadius: 4, backgroundColor: "#e2e8f0" }}>
+                      Style: {pair.mentee.discStyle || "Not recorded"}
+                    </span>
+                  </div>
+                  <h3 style={{ margin: "8px 0 2px 0" }}>{pair.mentee.name}</h3>
+                  <p className="muted" style={{ fontSize: 12, margin: "0 0 8px 0" }}>
+                    {menteeDisc.name} · <span lang="hi">{menteeDisc.hindiName}</span>
+                  </p>
+                  <p style={{ fontSize: 13, margin: "0 0 8px 0" }}>{menteeDisc.overview}</p>
+                  <div style={{ fontSize: 12, marginTop: 8 }}>
+                    <strong>Communication Preference:</strong>
+                    <p style={{ margin: "2px 0 8px 0", color: "#475569" }}>{menteeDisc.communicationStyle}</p>
+                    <strong>Developmental Focus:</strong>
+                    <p style={{ margin: "2px 0 0 0", color: "#475569" }}>{menteeDisc.mentoringAdvice.asMentee}</p>
+                  </div>
+                </article>
+              </div>
+            </div>
+          );
+        })()}
       </section>
       {(["Learning journal", "Notebook"] as const).map((t) => (
         <section className="card" hidden={tab !== t} key={t}>

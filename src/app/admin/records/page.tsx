@@ -9,6 +9,8 @@ type Employee = {
   role: string;
   department: string;
   designation: string;
+  highestQualification?: string | null;
+  location?: string | null;
   careerGoals: string | null;
   topics: string[];
   challenges: string[];
@@ -100,6 +102,13 @@ export default function AdminRecords() {
             <p>
               {e.email} · {e.department} · {e.designation}
             </p>
+            {(e.highestQualification || e.location) && (
+              <p className="muted">
+                {e.highestQualification ? `Qualification: ${e.highestQualification}` : ""}
+                {e.highestQualification && e.location ? " · " : ""}
+                {e.location ? `Location: 📍 ${e.location}` : ""}
+              </p>
+            )}
             <h3>Career goals</h3>
             <pre>{e.careerGoals || "Not recorded"}</pre>
             <h3>Competencies</h3>

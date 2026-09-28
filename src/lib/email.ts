@@ -161,3 +161,217 @@ export async function sendPairingProposalEmail({
     return { simulated: true, to, name };
   }
 }
+
+/**
+ * Send automated email to both Mentor and Mentee when a session is scheduled or updated with Google Meet link
+ */
+export async function sendSessionScheduledEmail({
+  to,
+  name,
+  counterpartName,
+  counterpartRole,
+  weekNumber,
+  scheduledTime,
+  googleMeetLink,
+  agenda,
+  pairId,
+  customAppUrl,
+}: {
+  to: string;
+  name: string;
+  counterpartName: string;
+  counterpartRole: 'MENTEE' | 'MENTOR';
+  weekNumber: number;
+  scheduledTime: string | null;
+  googleMeetLink?: string | null;
+  agenda?: string | null;
+  pairId: string;
+  customAppUrl?: string;
+}) {
+  const baseUrl = customAppUrl || APP_URL;
+  const workspaceUrl = `${baseUrl}/space/${encodeURIComponent(pairId)}`;
+
+  const formattedTime = scheduledTime
+    ? new Date(scheduledTime).toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      }) + ' IST'
+    : 'Time to be confirmed';
+
+  const subject = `[Margdarshan] Week ${weekNumber} Mentoring Session Scheduled with ${counterpartName}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <div style="background-color: #0f172a; padding: 16px; border-radius: 6px; text-align: center; margin-bottom: 20px;">
+        <h2 style="color: #ffffff; margin: 0; font-size: 20px;">Margdarshan Mentoring Platform</h2>
+        <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 12px;">Session Schedule &amp; Video Call Confirmation</p>
+      </div>
+
+      <p>Dear <strong>${name}</strong>,</p>
+
+      <p>Your <strong>Week ${weekNumber}</strong> mentoring session with <strong>${counterpartName}</strong> (${counterpartRole === 'MENTOR' ? 'Mentor' : 'Mentee'}) has been scheduled.</p>
+
+      <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 16px; border-radius: 6px; margin: 20px 0;">
+        <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 6px 0; color: #64748b; width: 140px;"><strong>Date &amp; Time:</strong></td>
+            <td style="padding: 6px 0; color: #0f172a; font-weight: bold;">${formattedTime}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #64748b;"><strong>Agenda / Topic:</strong></td>
+            <td style="padding: 6px 0; color: #334155;">${agenda || `Week ${weekNumber} Mentoring Check-in & Review`}</td>
+          </tr>
+          ${
+            googleMeetLink
+              ? `
+          <tr>
+            <td style="padding: 6px 0; color: #64748b;"><strong>Google Meet:</strong></td>
+            <td style="padding: 6px 0;">
+              <a href="${googleMeetLink}" target="_blank" style="color: #2563eb; font-weight: bold; text-decoration: underline;">
+                Join Google Meet Video Call &rarr;
+              </a>
+            </td>
+          </tr>`
+              : ''
+          }
+        </table>
+      </div>
+
+      <div style="text-align: center; margin: 26px 0; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+        ${
+          googleMeetLink
+            ? `
+        <a href="${googleMeetLink}" target="_blank" style="background-color: #16a34a; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block; margin-right: 8px;">
+          📹 Join Google Meet Now
+        </a>`
+            : ''
+        }
+        <a href="${workspaceUrl}" style="background-color: #0f172a; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
+          Open Pair Workspace &rarr;
+        </a>
+      </div>
+
+      <p style="font-size: 12px; color: #64748b; margin-top: 20px;">
+        💡 <em>Preparation tip: Review last week's action commitments and note down 1-2 questions you'd like to reflect on before the call.</em>
+      </p>
+
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+
+      <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
+        Sent automatically by Margdarshan System &bull; noreply@rdc.in
+      </p>
+    </div>
+  `;
+
+  const transporter = getTransporter();
+  if (transporter) {
+    return transporter.sendMail({
+      from: EMAIL_FROM,
+      to,
+      subject,
+      html,
+    });
+  } else {
+    console.log(`[SMTP SIMULATION] Sent Session Scheduled Email to ${to} (${name}) for Week ${weekNumber}`);
+    return { simulated: true, to, name };
+  }
+}
+
+/**
+ * Send post-session feedback and summary email to both Mentor and Mentee
+ */
+export async function sendSessionCompletedFeedbackEmail({
+  to,
+  name,
+  counterpartName,
+  counterpartRole,
+  weekNumber,
+  discussionPoints,
+  commitments,
+  pairId,
+  customAppUrl,
+}: {
+  to: string;
+  name: string;
+  counterpartName: string;
+  counterpartRole: 'MENTEE' | 'MENTOR';
+  weekNumber: number;
+  discussionPoints?: string | null;
+  commitments?: string | null;
+  pairId: string;
+  customAppUrl?: string;
+}) {
+  const baseUrl = customAppUrl || APP_URL;
+  const workspaceUrl = `${baseUrl}/space/${encodeURIComponent(pairId)}`;
+
+  const subject = `[Margdarshan] Week ${weekNumber} Session Completed - Summary & Feedback Request`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <div style="background-color: #0f172a; padding: 16px; border-radius: 6px; text-align: center; margin-bottom: 20px;">
+        <h2 style="color: #ffffff; margin: 0; font-size: 20px;">Margdarshan Mentoring Platform</h2>
+        <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 12px;">Session Summary &amp; Growth Feedback</p>
+      </div>
+
+      <p>Dear <strong>${name}</strong>,</p>
+
+      <p>Congratulations on completing your <strong>Week ${weekNumber}</strong> mentoring session with <strong>${counterpartName}</strong> (${counterpartRole === 'MENTOR' ? 'Mentor' : 'Mentee'}).</p>
+
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 14px; border-radius: 6px; margin: 16px 0;">
+        <span style="font-size: 13px; color: #166534; font-weight: bold;">✅ Session Marked as Completed</span>
+        <p style="font-size: 12px; color: #166534; margin: 4px 0 0 0;">Your mentoring progress and journal entries have been recorded.</p>
+      </div>
+
+      ${
+        discussionPoints
+          ? `
+      <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+        <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #1e3a8a;">Key Discussion Points:</p>
+        <p style="margin: 0; font-size: 13px; color: #334155; white-space: pre-wrap;">${discussionPoints}</p>
+      </div>`
+          : ''
+      }
+
+      ${
+        commitments
+          ? `
+      <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+        <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #92400e;">Commitments &amp; Action Items:</p>
+        <p style="margin: 0; font-size: 13px; color: #78350f; white-space: pre-wrap;">${commitments}</p>
+      </div>`
+          : ''
+      }
+
+      <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 16px; border-radius: 6px; margin: 20px 0; text-align: center;">
+        <p style="margin: 0 0 10px 0; font-size: 13px; font-weight: bold; color: #0f172a;">Please share your 30-second session reflection:</p>
+        <a href="${workspaceUrl}" style="background-color: #0f172a; color: #ffffff; padding: 10px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px; display: inline-block;">
+          Submit Weekly Rating &amp; Notes &rarr;
+        </a>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+
+      <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
+        Sent automatically by Margdarshan System &bull; noreply@rdc.in
+      </p>
+    </div>
+  `;
+
+  const transporter = getTransporter();
+  if (transporter) {
+    return transporter.sendMail({
+      from: EMAIL_FROM,
+      to,
+      subject,
+      html,
+    });
+  } else {
+    console.log(`[SMTP SIMULATION] Sent Post-Session Feedback Email to ${to} (${name}) for Week ${weekNumber}`);
+    return { simulated: true, to, name };
+  }
+}
+

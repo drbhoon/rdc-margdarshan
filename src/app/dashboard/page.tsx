@@ -33,6 +33,9 @@ type Employee = {
   role: string;
   department: string;
   designation: string;
+  highestQualification?: string | null;
+  location?: string | null;
+  discStyle?: string | null;
   mentorCapacity: number;
 };
 
@@ -54,6 +57,19 @@ type Data = {
   actionItems?: Array<{ id: string; title: string; dueDate: string }>;
 };
 
+type MatchSuggestion = {
+  mentee: Employee;
+  mentor: Employee;
+  matchScore: number;
+  reasons: string[];
+  harmonyAdvice?: {
+    title: string;
+    harmonyScore: string;
+    advice: string;
+    tips: string[];
+  };
+};
+
 type AdminTab = "matching" | "relationships" | "roster" | "journals";
 
 export default function Dashboard() {
@@ -67,6 +83,8 @@ export default function Dashboard() {
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [rosterRoleFilter, setRosterRoleFilter] = useState<string>("ALL");
   const [showAddEmployee, setShowAddEmployee] = useState(false);
+  const [suggestions, setSuggestions] = useState<MatchSuggestion[] | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/dashboard", { cache: "no-store" });
@@ -78,6 +96,54 @@ export default function Dashboard() {
   useEffect(() => {
     if (user) void load().catch((e) => setError(e.message));
   }, [user, load]);
+
+  async function fetchMatchSuggestions() {
+    setLoadingSuggestions(true);
+    setError("");
+    setMessage("");
+    try {
+      const res = await fetch("/api/admin/match");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not calculate AI matches.");
+      if (json.suggestions && json.suggestions.length > 0) {
+        setSuggestions(json.suggestions);
+        setMessage(`AI matched ${json.suggestions.length} optimal pairing(s) based on DISC harmony and competency framework.`);
+      } else {
+        setSuggestions([]);
+        setMessage(
+          json.totalMenteesAvailable === 0
+            ? "All active mentees already have active or proposed mentoring relationships."
+            : "No active mentors with available capacity found for remaining mentees."
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to compute matches.");
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }
+
+  async function applySuggestedMatches(pairings?: Array<{ mentorCode: string; menteeCode: string }>) {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const res = await fetch("/api/admin/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pairings }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to create pairings.");
+      setSuggestions(null);
+      await load();
+      setMessage(json.message || "Pairings successfully created and invitation emails dispatched!");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create pairings.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function send(path: string, body: unknown) {
     setBusy(true);
@@ -431,6 +497,7 @@ export default function Dashboard() {
             {activeTab === "matching" && (
               <div className="space-y-6 animate-in fade-in duration-300">
                 {/* AI Matching & Fast Pair Box */}
+                {/* AI Matching & Fast Pair Box */}
                 <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-6">
                     <div>
@@ -439,19 +506,123 @@ export default function Dashboard() {
                         AI Compatibility Matching &amp; Pair Creation
                       </h3>
                       <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                        Matches respect mentor capacity and preserve existing records. Both participants accept before sessions begin.
+                        AI evaluates DISC behavioral complementarity, shared competency focus areas, and cross-departmental growth potential.
                       </p>
                     </div>
 
-                    <button
-                      disabled={busy}
-                      onClick={() => void send("/api/admin/match", {})}
-                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      <span>{busy ? "Calculating..." : "Suggest AI Matches"}</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        disabled={loadingSuggestions || busy}
+                        onClick={() => void fetchMatchSuggestions()}
+                        className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        <span>{loadingSuggestions ? "Analyzing Profiles..." : "Suggest AI Matches"}</span>
+                      </button>
+                    </div>
                   </div>
+
+                  {/* AI Match Suggestions Preview Panel */}
+                  {suggestions !== null && (
+                    <div className="bg-gradient-to-r from-indigo-50/70 to-blue-50/70 p-5 rounded-2xl border border-indigo-200/80 space-y-4 animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-black text-indigo-950 flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-indigo-600" />
+                            AI Match Recommendations ({suggestions.length} Found)
+                          </h4>
+                          <p className="text-xs text-indigo-800/80 mt-0.5">
+                            Review the predicted compatibility reasons and harmony scores before creating pairing invitations.
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setSuggestions(null)}
+                          className="text-xs text-slate-500 hover:text-slate-800 p-1"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {suggestions.length === 0 ? (
+                        <div className="p-4 bg-white/80 rounded-xl border border-indigo-100 text-xs text-indigo-900 text-center">
+                          No new unmatched candidates available or mentors have reached maximum capacity.
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {suggestions.map((s, idx) => (
+                              <div
+                                key={idx}
+                                className="bg-white p-4 rounded-xl border border-indigo-100 shadow-xs space-y-3"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    {(s.matchScore * 100).toFixed(0)}% Compatibility
+                                  </span>
+                                  <span className="text-[11px] font-bold text-slate-400">
+                                    DISC: {s.mentor.discStyle || "—"} ↔ {s.mentee.discStyle || "—"}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div className="p-2.5 bg-slate-50 rounded-lg">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Mentee</span>
+                                    <p className="font-bold text-slate-900">{s.mentee.name}</p>
+                                    <p className="text-[11px] text-slate-500">{s.mentee.department}</p>
+                                    {s.mentee.location && (
+                                      <p className="text-[10px] text-indigo-600">📍 {s.mentee.location}</p>
+                                    )}
+                                  </div>
+                                  <div className="p-2.5 bg-slate-50 rounded-lg">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Mentor</span>
+                                    <p className="font-bold text-slate-900">{s.mentor.name}</p>
+                                    <p className="text-[11px] text-slate-500">{s.mentor.department}</p>
+                                    {s.mentor.location && (
+                                      <p className="text-[10px] text-indigo-600">📍 {s.mentor.location}</p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="text-[11px] space-y-1 bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100">
+                                  <span className="font-bold text-indigo-950 block">AI Rationale:</span>
+                                  {s.reasons.map((r, rIdx) => (
+                                    <p key={rIdx} className="text-indigo-800 flex items-center gap-1.5">
+                                      <span className="text-indigo-500">•</span> {r}
+                                    </p>
+                                  ))}
+                                </div>
+
+                                <div className="flex justify-end pt-1">
+                                  <button
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void applySuggestedMatches([
+                                        { mentorCode: s.mentor.employeeCode, menteeCode: s.mentee.employeeCode },
+                                      ])
+                                    }
+                                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
+                                  >
+                                    Create This Pair &rarr;
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex justify-end gap-3 pt-2">
+                            <button
+                              disabled={busy}
+                              onClick={() => void applySuggestedMatches()}
+                              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Confirm &amp; Auto-Create All AI Matches ({suggestions.length})</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Manual Pair Creator */}
                   <form
@@ -841,6 +1012,24 @@ export default function Dashboard() {
                           </div>
 
                           <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">Highest Qualification</label>
+                            <input
+                              name="highestQualification"
+                              placeholder="e.g. B.Tech Civil, M.Tech, B.E."
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">Location / Plant Site</label>
+                            <input
+                              name="location"
+                              placeholder="e.g. Turbhe Plant, Mumbai / Pune"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                            />
+                          </div>
+
+                          <div>
                             <label className="block text-xs font-bold text-slate-700 mb-1">Mentor Capacity</label>
                             <input
                               type="number"
@@ -880,10 +1069,10 @@ export default function Dashboard() {
                       <thead>
                         <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
                           <th className="py-3.5 px-6">Employee</th>
-                          <th className="py-3.5 px-6">Role</th>
+                          <th className="py-3.5 px-6">Role &amp; DISC</th>
                           <th className="py-3.5 px-6">Department &amp; Designation</th>
+                          <th className="py-3.5 px-6">Qualification &amp; Location</th>
                           <th className="py-3.5 px-6">Capacity</th>
-                          <th className="py-3.5 px-6">Employee Code</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
@@ -896,32 +1085,40 @@ export default function Dashboard() {
                                 </div>
                                 <div>
                                   <p className="font-bold text-slate-900">{e.name}</p>
-                                  <p className="text-[11px] text-slate-400">{e.email}</p>
+                                  <p className="text-[11px] text-slate-400">{e.email} &bull; #{e.employeeCode}</p>
                                 </div>
                               </div>
                             </td>
                             <td className="py-3.5 px-6">
-                              <span
-                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                                  e.role === "MENTOR"
-                                    ? "bg-purple-50 text-purple-700 border border-purple-200"
-                                    : e.role === "ADMIN"
-                                    ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                                    : "bg-blue-50 text-blue-700 border border-blue-200"
-                                }`}
-                              >
-                                {e.role}
-                              </span>
+                              <div className="flex flex-col gap-1 items-start">
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                    e.role === "MENTOR"
+                                      ? "bg-purple-50 text-purple-700 border border-purple-200"
+                                      : e.role === "ADMIN"
+                                      ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                      : "bg-blue-50 text-blue-700 border border-blue-200"
+                                  }`}
+                                >
+                                  {e.role}
+                                </span>
+                                {e.discStyle && (
+                                  <span className="px-2 py-0.2 rounded text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
+                                    DISC: {e.discStyle}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-3.5 px-6">
                               <p className="font-medium text-slate-800">{e.designation}</p>
                               <p className="text-[11px] text-slate-400">{e.department}</p>
                             </td>
+                            <td className="py-3.5 px-6">
+                              <p className="font-medium text-slate-800">{e.highestQualification || "—"}</p>
+                              <p className="text-[11px] text-slate-500">{e.location ? `📍 ${e.location}` : "—"}</p>
+                            </td>
                             <td className="py-3.5 px-6 font-semibold">
                               {e.role === "MENTOR" ? `${e.mentorCapacity} Mentees` : "—"}
-                            </td>
-                            <td className="py-3.5 px-6 font-mono text-[11px] text-slate-500 font-semibold">
-                              #{e.employeeCode}
                             </td>
                           </tr>
                         ))}
@@ -1042,6 +1239,25 @@ export default function Dashboard() {
                             <p className="text-xs text-slate-500 font-medium">
                               {partner.designation} · {partner.department}
                             </p>
+                            {(partner.location || partner.highestQualification || partner.discStyle) && (
+                              <div className="flex flex-wrap gap-1.5 pt-1.5 text-[10px]">
+                                {partner.location && (
+                                  <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
+                                    📍 {partner.location}
+                                  </span>
+                                )}
+                                {partner.highestQualification && (
+                                  <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
+                                    🎓 {partner.highestQualification}
+                                  </span>
+                                )}
+                                {partner.discStyle && (
+                                  <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold border border-indigo-100">
+                                    DISC: {partner.discStyle}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
 

@@ -62,6 +62,10 @@ export const POST = protectedRoute(async (req: NextRequest) => {
             409,
             "An employee code cannot be reassigned to another email.",
           );
+        const highestQualification = c.highestQualification
+          ? textValue(c.highestQualification, 200)
+          : null;
+        const location = c.location ? textValue(c.location, 200) : null;
         const data = {
           name,
           email,
@@ -71,6 +75,8 @@ export const POST = protectedRoute(async (req: NextRequest) => {
             c.designation ?? "Graduate Engineer Trainee",
             200,
           ),
+          highestQualification,
+          location,
           mentorCapacity,
         };
         const joinDate = c.joinDate ? new Date(c.joinDate) : new Date();

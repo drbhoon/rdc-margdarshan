@@ -14,6 +14,8 @@ export interface User {
   role: "MENTEE" | "MENTOR" | "ADMIN";
   department: string;
   designation: string;
+  highestQualification?: string | null;
+  location?: string | null;
   discStyle: string | null;
   isConsentShared: boolean;
   careerGoals: string | null;
@@ -80,11 +82,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAllUsers([]);
     router.replace("/login");
   };
-  const login = async () => ({
-    success: false,
-    error:
-      "Sign in with your RDC Google account. Persona switching is not supported.",
-  });
+  const login = async (code: string) => {
+    try {
+      const r = await fetch("/api/auth/demo-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeCode: code }),
+      });
+      const d = await r.json();
+      if (!r.ok) return { success: false, error: d.error || "Login failed" };
+      await refreshUser();
+      router.push("/dashboard");
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Connection failed" };
+    }
+  };
   return (
     <AuthContext.Provider
       value={{

@@ -7,15 +7,19 @@ import {
   AccessError,
   textValue,
 } from "@/lib/access";
+import type { Prisma } from "@/generated/prisma/client";
+import { sendSessionScheduledEmail, sendSessionCompletedFeedbackEmail } from "@/lib/email";
+import { prisma } from "@/lib/db";
+
 type Context = { params: Promise<{ pairId: string; sessionId: string }> };
 
-import type { Prisma } from "@/generated/prisma/client";
 export const PUT = protectedRoute(
   async (req: NextRequest, { params }: Context) => {
     const user = (await getSession())!;
     const { pairId, sessionId } = await params;
     const body = await req.json();
-    const session = await pairWrite(pairId, user, async (tx, pair) => {
+
+    const { session, previousSessionState } = await pairWrite(pairId, user, async (tx, pair) => {
       const previous = await tx.session.findFirst({
         where: { id: sessionId, pairId },
       });
@@ -25,6 +29,13 @@ export const PUT = protectedRoute(
           409,
           "Someone updated this session. Reload and merge your changes.",
         );
+
+      const previousState = {
+        scheduledTime: previous.scheduledTime,
+        googleMeetLink: previous.googleMeetLink,
+        status: previous.status,
+      };
+
       const data: Prisma.SessionUpdateInput = { version: { increment: 1 } };
       for (const key of [
         "agenda",
@@ -99,8 +110,80 @@ export const PUT = protectedRoute(
         before: previous,
         after: result,
       });
-      return result;
+      return { session: result, previousSessionState: previousState };
     });
+
+    // Handle Async Email Notifications
+    try {
+      const pair = await prisma.mentoringPair.findUnique({
+        where: { id: pairId },
+        include: { mentor: true, mentee: true },
+      });
+
+      if (pair) {
+        const timeChanged =
+          session.scheduledTime &&
+          (!previousSessionState?.scheduledTime ||
+            session.scheduledTime.getTime() !== previousSessionState.scheduledTime.getTime());
+        const linkChanged =
+          session.googleMeetLink &&
+          session.googleMeetLink !== previousSessionState?.googleMeetLink;
+
+        // 1. Session Scheduled / Rescheduled with Google Meet
+        if (timeChanged || linkChanged) {
+          void sendSessionScheduledEmail({
+            to: pair.mentee.email,
+            name: pair.mentee.name,
+            counterpartName: pair.mentor.name,
+            counterpartRole: "MENTOR",
+            weekNumber: session.weekNumber,
+            scheduledTime: session.scheduledTime ? session.scheduledTime.toISOString() : null,
+            googleMeetLink: session.googleMeetLink,
+            agenda: session.agenda,
+            pairId,
+          });
+          void sendSessionScheduledEmail({
+            to: pair.mentor.email,
+            name: pair.mentor.name,
+            counterpartName: pair.mentee.name,
+            counterpartRole: "MENTEE",
+            weekNumber: session.weekNumber,
+            scheduledTime: session.scheduledTime ? session.scheduledTime.toISOString() : null,
+            googleMeetLink: session.googleMeetLink,
+            agenda: session.agenda,
+            pairId,
+          });
+        }
+
+        // 2. Session Marked as Completed -> Auto trigger Feedback & Post-session email
+        if (session.status === "COMPLETED" && previousSessionState?.status !== "COMPLETED") {
+          void sendSessionCompletedFeedbackEmail({
+            to: pair.mentee.email,
+            name: pair.mentee.name,
+            counterpartName: pair.mentor.name,
+            counterpartRole: "MENTOR",
+            weekNumber: session.weekNumber,
+            discussionPoints: session.discussionPoints,
+            commitments: session.commitments,
+            pairId,
+          });
+          void sendSessionCompletedFeedbackEmail({
+            to: pair.mentor.email,
+            name: pair.mentor.name,
+            counterpartName: pair.mentee.name,
+            counterpartRole: "MENTEE",
+            weekNumber: session.weekNumber,
+            discussionPoints: session.discussionPoints,
+            commitments: session.commitments,
+            pairId,
+          });
+        }
+      }
+    } catch (mailErr) {
+      console.warn("Could not dispatch session notification email:", mailErr);
+    }
+
     return NextResponse.json({ success: true, session });
   },
 );
+

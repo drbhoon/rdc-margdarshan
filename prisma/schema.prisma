@@ -20,6 +20,8 @@ model Employee {
   authSessions     AuthSession[]
   
   // Profile Setup
+  highestQualification String?
+  location         String?
   discStyle        String?            
   discRawResponse  Json?              
   careerGoals      String?

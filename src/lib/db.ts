@@ -12,5 +12,17 @@ export const prisma =
   globals.prisma ?? new PrismaClient({ adapter: new PrismaPg(pool) });
 globals.pool = pool;
 globals.prisma = prisma;
-/** Compatibility for existing callers: no database mutations. */
-export async function ensureDatabaseSchema() {}
+let schemaEnsured = false;
+export async function ensureDatabaseSchema() {
+  if (schemaEnsured) return;
+  try {
+    await pool.query(`
+      ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "highestQualification" TEXT;
+      ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "location" TEXT;
+    `);
+    schemaEnsured = true;
+  } catch (err) {
+    console.warn("Schema reconciliation notice:", err instanceof Error ? err.message : err);
+  }
+}
+
