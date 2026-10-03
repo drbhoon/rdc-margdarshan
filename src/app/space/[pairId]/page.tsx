@@ -117,6 +117,8 @@ const fields = [
   ["commitments", "Commitments / संकल्प"],
   ["supportNeeded", "Support needed / सहयोग"],
 ] as const;
+const preparationFields = fields.slice(0, 2);
+const reflectionFields = fields.slice(2);
 const displayTime = (value: string) =>
   new Date(value).toLocaleString("en-IN", {
     timeZone: "Asia/Kolkata",
@@ -173,19 +175,6 @@ function SessionEditor({
     }
   }
 
-  function generateMeetLink() {
-    const room = `rdc-${Math.random().toString(36).substring(2, 6)}-${Math.random().toString(36).substring(2, 6)}`;
-    const meetUrl = `https://meet.google.com/${room}`;
-    if (form.current) {
-      const input = form.current.elements.namedItem("googleMeetLink") as HTMLInputElement;
-      if (input) {
-        input.value = meetUrl;
-        setDirty(true);
-        dirtyChanged(record.id, true);
-      }
-    }
-  }
-
   return (
     <form
       ref={form}
@@ -202,6 +191,7 @@ function SessionEditor({
         </p>
       )}
       <fieldset disabled={blocked}>
+        <h3>Before the conversation / बातचीत से पहले</h3>
         <div className="grid">
           <label>
             Meeting time (IST) / बैठक का समय
@@ -212,21 +202,11 @@ function SessionEditor({
             />
           </label>
           <label>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>Meeting link / बैठक का लिंक</span>
-              <button
-                type="button"
-                className="secondary"
-                style={{ fontSize: 11, padding: "2px 8px", margin: 0 }}
-                onClick={generateMeetLink}
-              >
-                ✨ Generate Meet Link
-              </button>
-            </div>
+            Meeting link / बैठक का लिंक
             <input
               type="url"
               name="googleMeetLink"
-              placeholder="https://meet.google.com/..."
+              placeholder="Paste a Google Meet or Teams link"
               defaultValue={base.googleMeetLink ?? ""}
             />
           </label>
@@ -245,7 +225,7 @@ function SessionEditor({
           </div>
         )}
         <p className="muted" style={{ fontSize: 11, margin: "4px 0 12px 0" }}>
-          📧 <em>Auto-Email: Saving a meeting time or Meet link dispatches automated invitations. Marking a session as COMPLETED sends post-session reflections and feedback prompts to both participants.</em>
+          Save the real meeting time and link here so both participants can use the same record.
         </p>
         <label>
           Session status
@@ -255,7 +235,7 @@ function SessionEditor({
             ))}
           </select>
         </label>
-        {fields.map(([key, label]) => (
+        {preparationFields.map(([key, label]) => (
           <label key={key}>
             {label}
             <textarea
@@ -263,6 +243,13 @@ function SessionEditor({
               defaultValue={base[key] ?? ""}
               maxLength={20000}
             />
+          </label>
+        ))}
+        <h3>After the conversation / बातचीत के बाद</h3>
+        {reflectionFields.map(([key, label]) => (
+          <label key={key}>
+            {label}
+            <textarea name={key} defaultValue={base[key] ?? ""} maxLength={20000} />
           </label>
         ))}
         {reflection && (
@@ -344,8 +331,7 @@ export default function MentoringSpace() {
     void reload().catch((e) => setError(e.message));
     const timer = setInterval(
       () =>
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-    void reload().catch(() =>
+        void reload().catch(() =>
           setError("Connection interrupted. Saving may be unavailable."),
         ),
       10000,
@@ -518,23 +504,14 @@ export default function MentoringSpace() {
         </form>
       </section>
       <nav>
-        {[
-          "Session",
-          "Actions",
-          "DISC & Harmony",
-          "Learning journal",
-          "Notebook",
-          "AI coach",
-          "Reviews",
-          "History",
-        ].map((t) => (
+        {["Session", "Actions", "Journey"].map((t) => (
           <button
             key={t}
             className={tab === t ? "" : "secondary"}
             aria-pressed={tab === t}
             onClick={() => {
               setTab(t);
-              if (t === "History")
+              if (t === "Journey")
                 void fetch("/api/pair/" + pairId + "/history")
                   .then(async (r) => {
                     const j = await r.json();
@@ -566,6 +543,16 @@ export default function MentoringSpace() {
       </p>
       <section className="card" hidden={tab !== "Session"}>
         <h2>Session record / बैठक का रिकॉर्ड</h2>
+        <div className="record" style={{ backgroundColor: "#eef2ff", borderColor: "#c7d2fe" }}>
+          <h3 style={{ marginTop: 0 }}>Conversation card · Week {week}</h3>
+          <p className="muted">Use these prompts to keep the meeting practical:</p>
+          <ol style={{ marginBottom: 0 }}>
+            <li>What would useful progress on “{themes[week]}” look like?</li>
+            <li>Which recent workplace example should we examine?</li>
+            <li>What options or small experiment could help?</li>
+            <li>What will each person do before the next session?</li>
+          </ol>
+        </div>
         {!session && (
           <p>
             Sessions become available after both participants accept the
@@ -663,10 +650,10 @@ export default function MentoringSpace() {
           </fieldset>
         </form>
       </section>
-      <section className="card" hidden={tab !== "DISC & Harmony"}>
-        <h2>DISC Behavioral Harmony &amp; Collaboration Guide</h2>
+      <section className="card" hidden={tab !== "Journey"}>
+        <h2>Communication styles / संवाद शैली</h2>
         <p className="muted">
-          DISC behavioral styles offer insights into communication pacing, decision-making, and workplace motivations at RDC Concrete plants and sites.
+          DISC is a conversation starter for adapting communication. It is not a diagnosis or performance assessment.
         </p>
 
         {(() => {
@@ -746,7 +733,7 @@ export default function MentoringSpace() {
         })()}
       </section>
       {(["Learning journal", "Notebook"] as const).map((t) => (
-        <section className="card" hidden={tab !== t} key={t}>
+        <section className="card" hidden={tab !== "Journey"} key={t}>
           <h2>{t}</h2>
           <p className="muted">
             Shared with this pair and the administrators. Saved entries remain
@@ -783,8 +770,8 @@ export default function MentoringSpace() {
           ))}
         </section>
       ))}
-      <section className="card" hidden={tab !== "AI coach"}>
-        <h2>AI coaching suggestions</h2>
+      <section className="card" hidden={tab !== "Session"}>
+        <h2>Session coach / बातचीत सहायक</h2>
         <p className="muted">
           Questions are saved and may be sent to the AI provider. Replies are
           suggestions for discussion, not performance assessments. During
@@ -822,7 +809,7 @@ export default function MentoringSpace() {
           </fieldset>
         </form>
       </section>
-      <section className="card" hidden={tab !== "Reviews"}>
+      <section className="card" hidden={tab !== "Journey"}>
         <h2>Midpoint & closing reviews</h2>
         {pair.surveys.map((s) => (
           <article key={s.id} className="record">
@@ -866,7 +853,7 @@ export default function MentoringSpace() {
           <p>Select week 6 or 12 to submit a review.</p>
         )}
       </section>
-      <section className="card" hidden={tab !== "History"}>
+      <section className="card" hidden={tab !== "Journey"}>
         <h2>Record history</h2>
         {history.map((h) => (
           <details className="record" key={h.id}>

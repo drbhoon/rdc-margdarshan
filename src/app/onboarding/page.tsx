@@ -124,6 +124,14 @@ function ProfileForm({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
+  const setupSteps = [
+    { label: "Goal or challenge", done: Boolean(user.careerGoals || user.challenges.length) },
+    { label: "Development topics", done: user.topics.length > 0 },
+    { label: "Availability", done: Boolean(user.availability) },
+    { label: "Communication preference", done: Boolean(user.commStyleNotes) },
+    { label: "DISC reflection", done: Boolean(user.discStyle) },
+  ];
+  const completedSteps = setupSteps.filter((step) => step.done).length;
   async function submit(e: FormEvent<HTMLFormElement>, assessment = false) {
     e.preventDefault();
     const values = new FormData(e.currentTarget);
@@ -173,6 +181,18 @@ function ProfileForm({
 
   return (
     <>
+      <section className="card">
+        <h2>5-minute setup · {completedSteps}/{setupSteps.length} complete</h2>
+        <p className="muted">A useful match needs only a goal, a few interests and a simple way to meet.</p>
+        <div className="grid">
+          {setupSteps.map((step) => (
+            <div className="record" key={step.label} style={{ padding: 10 }}>
+              {step.done ? "✓" : "○"} {step.label}
+            </div>
+          ))}
+        </div>
+        <p className="muted">Qualification and location add context but are optional for the proof of concept.</p>
+      </section>
       <section className="card">
         <h2>{user.name}</h2>
         <p>
@@ -287,7 +307,8 @@ function ProfileForm({
       </section>
 
       <section className="card">
-        <h2>DISC Behavioral &amp; Communication Reflection</h2>
+        <h2>DISC communication reflection</h2>
+        <p className="muted">A short conversation starter, not a psychometric diagnosis or performance evaluation.</p>
         <div style={{ backgroundColor: "#f8fafc", padding: 16, borderRadius: 8, margin: "12px 0", border: "1px solid #e2e8f0" }}>
           <h3 style={{ margin: "0 0 6px 0", fontSize: 14 }}>Understanding the DISC Framework at RDC Concrete:</h3>
           <p style={{ fontSize: 12, color: "#475569", margin: 0, lineHeight: 1.6 }}>
@@ -395,4 +416,3 @@ export default function Onboarding() {
     </main>
   );
 }
-

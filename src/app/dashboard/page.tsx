@@ -8,21 +8,16 @@ import {
   Users,
   Sparkles,
   BookOpen,
-  Calendar,
   CheckCircle2,
-  Clock,
   ArrowRight,
   Search,
-  Filter,
   Plus,
   AlertCircle,
   TrendingUp,
   LogOut,
   UserCheck,
   Briefcase,
-  FileText,
   Layers,
-  ChevronRight,
   X,
 } from "lucide-react";
 
@@ -36,6 +31,12 @@ type Employee = {
   highestQualification?: string | null;
   location?: string | null;
   discStyle?: string | null;
+  careerGoals?: string | null;
+  topics?: string[];
+  challenges?: string[];
+  availability?: string | null;
+  commStyleNotes?: string | null;
+  isConsentShared?: boolean;
   mentorCapacity: number;
 };
 
@@ -44,7 +45,14 @@ type Pair = {
   status: string;
   mentor: Employee;
   mentee: Employee;
-  sessions: Array<{ status: string }>;
+  sharedGoals?: string | null;
+  sessions: Array<{
+    id: string;
+    weekNumber: number;
+    status: string;
+    scheduledTime?: string | null;
+    actionItems?: Array<{ id: string; title: string; dueDate: string; status: string; employeeCode: string }>;
+  }>;
   surveys: Array<{ growthRating: number }>;
   isOffRecord: boolean;
 };
@@ -54,7 +62,7 @@ type Data = {
   allEmployees?: Employee[];
   allSurveys?: Array<{ growthRating: number }>;
   legacyNotes?: Array<{ id: string; employeeCode: string; content: string }>;
-  actionItems?: Array<{ id: string; title: string; dueDate: string }>;
+  actionItems?: Array<{ id: string; title: string; dueDate: string; status?: string }>;
 };
 
 type MatchSuggestion = {
@@ -94,6 +102,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (user) void load().catch((e) => setError(e.message));
   }, [user, load]);
 
@@ -104,10 +113,10 @@ export default function Dashboard() {
     try {
       const res = await fetch("/api/admin/match");
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Could not calculate AI matches.");
+      if (!res.ok) throw new Error(json.error || "Could not calculate compatibility recommendations.");
       if (json.suggestions && json.suggestions.length > 0) {
         setSuggestions(json.suggestions);
-        setMessage(`AI matched ${json.suggestions.length} optimal pairing(s) based on DISC harmony and competency framework.`);
+        setMessage(`Prepared ${json.suggestions.length} compatibility recommendation(s) from shared interests, development needs, availability and communication preferences.`);
       } else {
         setSuggestions([]);
         setMessage(
@@ -117,7 +126,7 @@ export default function Dashboard() {
         );
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to compute matches.");
+      setError(err instanceof Error ? err.message : "Failed to prepare recommendations.");
     } finally {
       setLoadingSuggestions(false);
     }
@@ -137,7 +146,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(json.error || "Failed to create pairings.");
       setSuggestions(null);
       await load();
-      setMessage(json.message || "Pairings successfully created and invitation emails dispatched!");
+      setMessage(json.message || "Draft pairings created for administrator review.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create pairings.");
     } finally {
@@ -227,6 +236,22 @@ export default function Dashboard() {
     (n, p) => n + p.sessions.filter((s) => s.status === "COMPLETED").length,
     0,
   );
+  const openPairs = pairs.filter((p) => ["PROPOSED", "PENDING_ACCEPTANCE", "ACTIVE"].includes(p.status));
+  const pairedMentees = new Set(openPairs.map((p) => p.mentee.employeeCode));
+  const incompleteProfiles = roster.filter((employee) =>
+    employee.role !== "ADMIN" &&
+    (!employee.careerGoals || !employee.topics?.length || !employee.availability || !employee.discStyle),
+  );
+  const unpairedMentees = roster.filter((employee) => employee.role === "MENTEE" && !pairedMentees.has(employee.employeeCode));
+  const overdueActions = pairs.flatMap((pair) => pair.sessions.flatMap((session) => session.actionItems ?? []))
+    .filter((action) => action.status !== "COMPLETED" && new Date(action.dueDate) < new Date());
+  const unscheduledRelationships = pairs.filter((pair) =>
+    pair.status === "ACTIVE" && !pair.sessions.some((session) => session.status !== "COMPLETED" && session.scheduledTime),
+  );
+  const reviewsOutstanding = pairs.filter((pair) => pair.status === "ACTIVE" && pair.surveys.length === 0);
+  const currentPair = !admin ? openPairs[0] ?? pairs[0] : undefined;
+  const nextSession = currentPair?.sessions.find((session) => session.status !== "COMPLETED");
+  const nextAction = data?.actionItems?.[0];
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-20">
@@ -347,6 +372,50 @@ export default function Dashboard() {
           </div>
         )}
 
+        {admin ? (
+          <section className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-lg font-extrabold text-slate-900">Needs attention</h2>
+                <p className="text-xs text-slate-500">Start with the exceptions that may stop a mentoring relationship from moving forward.</p>
+              </div>
+              <AlertCircle className="w-5 h-5 text-amber-500" />
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {[
+                { label: "Incomplete profiles", value: incompleteProfiles.length, tab: "roster" as AdminTab },
+                { label: "Unpaired mentees", value: unpairedMentees.length, tab: "matching" as AdminTab },
+                { label: "Awaiting approval", value: proposedPairsCount, tab: "matching" as AdminTab },
+                { label: "No next meeting", value: unscheduledRelationships.length, tab: "relationships" as AdminTab },
+                { label: "Overdue actions", value: overdueActions.length, tab: "relationships" as AdminTab },
+              ].map((item) => (
+                <button key={item.label} onClick={() => setActiveTab(item.tab)} className="record text-left hover:border-indigo-300 transition" style={{ margin: 0 }}>
+                  <span className={`text-2xl font-black ${item.value ? "text-amber-600" : "text-emerald-600"}`}>{item.value}</span>
+                  <span className="block text-xs font-semibold text-slate-600">{item.label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-3">{reviewsOutstanding.length} active relationship(s) have no saved review yet. Open Relationships to inspect the full record.</p>
+          </section>
+        ) : (
+          <section className="bg-white p-5 sm:p-6 rounded-2xl border border-indigo-200 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-600">Your next step</span>
+                {!currentPair ? (
+                  <><h2 className="text-lg font-extrabold mt-1">Complete your learning profile</h2><p className="text-sm text-slate-600">A clear goal and availability help the administrator prepare a useful match.</p></>
+                ) : (
+                  <><h2 className="text-lg font-extrabold mt-1">{nextSession ? `Prepare for Week ${nextSession.weekNumber}` : "Reflect on the completed journey"}</h2><p className="text-sm text-slate-600">{nextAction ? `Action due: ${nextAction.title}` : currentPair.sharedGoals || "Open the relationship and agree one practical action."}</p></>
+                )}
+              </div>
+              <Link href={currentPair ? `/space/${currentPair.id}` : "/onboarding"} className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">
+                {currentPair ? (nextSession ? "Prepare / Reflect" : "Open journey") : "Finish profile"}<ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+            {currentPair && <div className="grid sm:grid-cols-3 gap-3 mt-5 pt-4 border-t border-slate-100 text-xs"><p><strong>Partner:</strong> {user.role === "MENTOR" ? currentPair.mentee.name : currentPair.mentor.name}</p><p><strong>Next session:</strong> {nextSession ? `Week ${nextSession.weekNumber}` : "Journey complete"}</p><p><strong>Open actions:</strong> {data?.actionItems?.length ?? 0}</p></div>}
+          </section>
+        )}
+
         {/* Key Metrics Overview Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
@@ -386,8 +455,8 @@ export default function Dashboard() {
               <Briefcase className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-2xl font-black text-slate-900">{roster.length}</p>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Registered Roster</p>
+              <p className="text-2xl font-black text-slate-900">{admin ? roster.length : (data?.actionItems?.length ?? 0)}</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{admin ? "Registered Roster" : "Open Actions"}</p>
             </div>
           </div>
         </div>
@@ -496,17 +565,16 @@ export default function Dashboard() {
             {/* TAB 1: MATCHING & INVITATIONS */}
             {activeTab === "matching" && (
               <div className="space-y-6 animate-in fade-in duration-300">
-                {/* AI Matching & Fast Pair Box */}
-                {/* AI Matching & Fast Pair Box */}
+                {/* Compatibility recommendations and draft pairing */}
                 <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-6">
                     <div>
                       <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
                         <Sparkles className="w-5 h-5 text-indigo-600" />
-                        AI Compatibility Matching &amp; Pair Creation
+                        Compatibility recommendations
                       </h3>
                       <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                        AI evaluates DISC behavioral complementarity, shared competency focus areas, and cross-departmental growth potential.
+                        Compare shared interests, development needs, availability and communication preferences. Missing profile details reduce the usefulness of a suggestion.
                       </p>
                     </div>
 
@@ -517,22 +585,22 @@ export default function Dashboard() {
                         className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
                       >
                         <Sparkles className="w-4 h-4" />
-                        <span>{loadingSuggestions ? "Analyzing Profiles..." : "Suggest AI Matches"}</span>
+                        <span>{loadingSuggestions ? "Comparing profiles..." : "Preview recommendations"}</span>
                       </button>
                     </div>
                   </div>
 
-                  {/* AI Match Suggestions Preview Panel */}
+                  {/* Recommendation preview */}
                   {suggestions !== null && (
                     <div className="bg-gradient-to-r from-indigo-50/70 to-blue-50/70 p-5 rounded-2xl border border-indigo-200/80 space-y-4 animate-in fade-in">
                       <div className="flex items-center justify-between">
                         <div>
                           <h4 className="text-sm font-black text-indigo-950 flex items-center gap-2">
                             <Sparkles className="w-4 h-4 text-indigo-600" />
-                            AI Match Recommendations ({suggestions.length} Found)
+                            Compatibility recommendations ({suggestions.length})
                           </h4>
                           <p className="text-xs text-indigo-800/80 mt-0.5">
-                            Review the predicted compatibility reasons and harmony scores before creating pairing invitations.
+                            Review the reasons before creating drafts. The administrator approves drafts before participants accept them.
                           </p>
                         </div>
                         <button
@@ -584,7 +652,7 @@ export default function Dashboard() {
                                 </div>
 
                                 <div className="text-[11px] space-y-1 bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100">
-                                  <span className="font-bold text-indigo-950 block">AI Rationale:</span>
+                                  <span className="font-bold text-indigo-950 block">Why this may work:</span>
                                   {s.reasons.map((r, rIdx) => (
                                     <p key={rIdx} className="text-indigo-800 flex items-center gap-1.5">
                                       <span className="text-indigo-500">•</span> {r}
@@ -602,7 +670,7 @@ export default function Dashboard() {
                                     }
                                     className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
                                   >
-                                    Create This Pair &rarr;
+                                    Create draft &rarr;
                                   </button>
                                 </div>
                               </div>
@@ -616,7 +684,7 @@ export default function Dashboard() {
                               className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
                             >
                               <CheckCircle2 className="w-4 h-4" />
-                              <span>Confirm &amp; Auto-Create All AI Matches ({suggestions.length})</span>
+                              <span>Create all draft pairings ({suggestions.length})</span>
                             </button>
                           </div>
                         </div>
@@ -1332,4 +1400,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setUser(null);
     setAllUsers([]);
-    router.replace("/login");
+    window.location.assign("/login");
   };
   const login = async (code: string) => {
     try {
@@ -92,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const d = await r.json();
       if (!r.ok) return { success: false, error: d.error || "Login failed" };
       await refreshUser();
-      router.push("/dashboard");
+      window.location.assign("/dashboard");
       return { success: true };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "Connection failed" };

@@ -19,8 +19,17 @@ export function isAdminEmail(
 export function effectiveRole(employee: {
   email: string;
   role: "ADMIN" | "MENTOR" | "MENTEE";
+  googleSubject?: string | null;
 }): "ADMIN" | "MENTOR" | "MENTEE" {
   if (isAdminEmail(employee.email)) return "ADMIN";
+  // Demo identities are isolated by their synthetic Google subject. This keeps
+  // the one-click administrator journey usable without weakening real accounts.
+  if (
+    process.env.DEMO_MODE !== "false" &&
+    employee.googleSubject?.startsWith("demo-sub-")
+  ) {
+    return employee.role;
+  }
   return employee.role === "MENTOR" ? "MENTOR" : "MENTEE";
 }
 export function validGoogleIdentity(

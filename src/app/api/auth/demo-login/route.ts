@@ -6,13 +6,13 @@ import { ensureDemoData, DEMO_ACCOUNTS } from "@/lib/demo-data";
 
 export async function POST(req: NextRequest) {
   try {
+    if (process.env.DEMO_MODE === "false") {
+      return NextResponse.json({ error: "Demo access is disabled." }, { status: 404 });
+    }
     const { employeeCode } = await req.json();
     if (!employeeCode || typeof employeeCode !== "string") {
       return NextResponse.json({ error: "Employee code required." }, { status: 400 });
     }
-
-    // Ensure demo accounts and pairs are present in database
-    await ensureDemoData();
 
     const target = DEMO_ACCOUNTS.find((a) => a.employeeCode === employeeCode);
     if (!target) {
@@ -21,6 +21,10 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Seed only after the requested code has been validated. This keeps a new
+    // proof-of-concept environment immediately explorable.
+    await ensureDemoData();
 
     const employee = await prisma.employee.findUnique({
       where: { employeeCode: target.employeeCode },

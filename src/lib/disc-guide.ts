@@ -207,9 +207,9 @@ export function getHarmonyAdvice(
     (mCode === "C" && eCode === "I")
   ) {
     return {
-      title: `High Synergy Complementary Pairing (${mCode} ↔ ${eCode})`,
-      harmonyScore: "Optimal Developmental Synergy (100%)",
-      advice: `Your behavioral profiles are complementary opposites. This pairing offers the highest developmental return: the mentor provides what the mentee seeks to develop, and vice-versa.`,
+      title: `Potentially complementary styles (${mCode} ↔ ${eCode})`,
+      harmonyScore: "Different strengths to explore",
+      advice: `Your reflections suggest different communication preferences. Use them to discuss how each person likes to think, decide and receive feedback.`,
       tips: [
         `Mentor (${mCode}): Adapt pacing to match your counterpart's listening and processing preferences.`,
         `Mentee (${eCode}): Treat your counterpart's style as a masterclass in behavioral flexibility and leadership range.`,
@@ -219,9 +219,9 @@ export function getHarmonyAdvice(
   }
 
   return {
-    title: `Cross-Functional Dynamic Pairing (${mCode} ↔ ${eCode})`,
-    harmonyScore: "Strong Growth Synergy (85%)",
-    advice: `Your styles bring distinct yet complementary strengths. Combining ${m.name.split(" ")[0]} leadership with ${e.name.split(" ")[0]} focus will foster broad leadership capabilities.`,
+    title: `Different perspectives (${mCode} ↔ ${eCode})`,
+    harmonyScore: "Discuss and adapt",
+    advice: `Your reflections suggest distinct preferences. Combining ${m.name.split(" ")[0]} and ${e.name.split(" ")[0]} approaches may broaden the conversation when both people adapt deliberately.`,
     tips: [
       `Agree on preferred meeting formats: direct and goal-focused or structured and reflective.`,
       `Document key insights and action commitments after every session.`,

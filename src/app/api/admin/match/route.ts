@@ -4,7 +4,6 @@ import { getSession } from "@/lib/auth";
 import { protectedRoute, logChange } from "@/lib/access";
 import { createPair, lockMatching, openStatuses } from "@/lib/pairing";
 import { calculateMatchScore } from "@/lib/competencies";
-import { sendPairingProposalEmail } from "@/lib/email";
 import { getHarmonyAdvice } from "@/lib/disc-guide";
 
 export const GET = protectedRoute(async (_req: NextRequest) => {
@@ -200,31 +199,9 @@ export const POST = protectedRoute(async (req: NextRequest) => {
     { timeout: 30000 },
   );
 
-  // Trigger emails asynchronously outside of db transaction
-  for (const p of result.pairsCreatedList) {
-    try {
-      void sendPairingProposalEmail({
-        to: p.mentee.email,
-        name: p.mentee.name,
-        counterpartName: p.mentor.name,
-        counterpartRole: "MENTOR",
-        matchScore: p.matchScore,
-      });
-      void sendPairingProposalEmail({
-        to: p.mentor.email,
-        name: p.mentor.name,
-        counterpartName: p.mentee.name,
-        counterpartRole: "MENTEE",
-        matchScore: p.matchScore,
-      });
-    } catch (e) {
-      console.warn("Could not dispatch match proposal email:", e);
-    }
-  }
-
   let message = "";
   if (result.pairsCreatedList.length > 0) {
-    message = `Successfully created ${result.pairsCreatedList.length} new AI-matched mentoring proposal(s) and triggered email invitations!`;
+    message = `Created ${result.pairsCreatedList.length} draft mentoring proposal(s) for administrator review.`;
     if (result.totalUnmatched > 0) {
       message += ` (${result.totalUnmatched} mentee(s) remain unmatched due to mentor capacity).`;
     }

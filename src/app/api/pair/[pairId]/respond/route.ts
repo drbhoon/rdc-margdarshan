@@ -21,7 +21,7 @@ export const POST = protectedRoute(
         mentee = pair.menteeCode === user.employeeCode;
       if (!mentor && !mentee)
         throw new AccessError(403, "Only the mentor and mentee can respond.");
-      if (!["PROPOSED", "PENDING_ACCEPTANCE", "ACCEPTED"].includes(pair.status))
+      if (!["PENDING_ACCEPTANCE", "ACCEPTED"].includes(pair.status))
         throw new AccessError(
           409,
           "This invitation is no longer awaiting acceptance.",

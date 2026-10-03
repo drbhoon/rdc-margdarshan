@@ -19,7 +19,10 @@ export const GET = protectedRoute(async (_req: NextRequest) => {
       mentor: { omit: { googleSubject: true } },
       mentee: { omit: { googleSubject: true } },
       cohort: true,
-      sessions: { orderBy: { weekNumber: "asc" } },
+      sessions: {
+        orderBy: { weekNumber: "asc" },
+        include: { actionItems: true },
+      },
       surveys: true,
     },
     orderBy: { createdAt: "desc" },
@@ -27,19 +30,16 @@ export const GET = protectedRoute(async (_req: NextRequest) => {
   if (user.role === "ADMIN") {
     const [cohorts, employees, allSurveys, legacyNotes] = await Promise.all([
       prisma.cohort.findMany({ orderBy: { startDate: "desc" } }),
-      prisma.employee.findMany({
-        omit: { googleSubject: true },
-        orderBy: { name: "asc" },
-      }),
+      prisma.employee.findMany({ orderBy: { name: "asc" } }),
       prisma.surveyFeedback.findMany(),
       prisma.privateNote.findMany({
         where: { pairId: null },
         orderBy: { createdAt: "desc" },
       }),
     ]);
-    const allEmployees = employees.map((e) => ({
+    const allEmployees = employees.map(({ googleSubject: _googleSubject, ...e }) => ({
       ...e,
-      role: effectiveRole(e),
+      role: effectiveRole({ ...e, googleSubject: _googleSubject }),
     }));
     return NextResponse.json({
       pairs,
