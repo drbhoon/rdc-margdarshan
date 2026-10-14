@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { prisma, ensureDatabaseSchema } from "@/lib/db";
 export async function GET() {
   try {
+    await ensureDatabaseSchema();
     const session = await getSession();
     if (!session) return NextResponse.json({ user: null }, { status: 401 });
     const employee = await prisma.employee.findUniqueOrThrow({

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, ensureDatabaseSchema } from "@/lib/db";
 import { getSession, type UserSession } from "@/lib/auth";
 import { appOrigin } from "@/lib/auth-policy";
 import type { Prisma } from "@/generated/prisma/client";
@@ -26,6 +26,7 @@ export function protectedRoute<Args extends unknown[]>(
 ) {
   return async (...args: Args): Promise<Response> => {
     try {
+      await ensureDatabaseSchema();
       const req = args[0] as NextRequest;
       const user = await getSession();
       if (!user)
@@ -114,14 +115,15 @@ export function protectedRoute<Args extends unknown[]>(
       response.headers.set("Cache-Control", "no-store");
       return response;
     } catch (error) {
+      console.error("[PROTECTED_ROUTE_ERROR]", error);
       if (error instanceof AccessError)
         return NextResponse.json(
           { error: error.message },
           { status: error.status },
         );
       return NextResponse.json(
-        { error: "The request could not be completed. Please retry." },
-        { status: 503 },
+        { error: error instanceof Error ? error.message : "The request could not be completed. Please retry." },
+        { status: 500 },
       );
     }
   };

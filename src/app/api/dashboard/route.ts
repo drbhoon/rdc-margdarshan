@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, ensureDatabaseSchema } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { protectedRoute } from "@/lib/access";
 import { effectiveRole } from "@/lib/auth-policy";
+import { ensureDemoData } from "@/lib/demo-data";
+
 export const GET = protectedRoute(async (_req: NextRequest) => {
+  await ensureDatabaseSchema();
   const user = (await getSession())!;
-  const pairs = await prisma.mentoringPair.findMany({
+
+  let pairs = await prisma.mentoringPair.findMany({
     where:
       user.role === "ADMIN"
         ? {}
@@ -27,8 +31,9 @@ export const GET = protectedRoute(async (_req: NextRequest) => {
     },
     orderBy: { createdAt: "desc" },
   });
+
   if (user.role === "ADMIN") {
-    const [cohorts, employees, allSurveys, legacyNotes] = await Promise.all([
+    let [cohorts, employees, allSurveys, legacyNotes] = await Promise.all([
       prisma.cohort.findMany({ orderBy: { startDate: "desc" } }),
       prisma.employee.findMany({ orderBy: { name: "asc" } }),
       prisma.surveyFeedback.findMany(),
@@ -37,10 +42,45 @@ export const GET = protectedRoute(async (_req: NextRequest) => {
         orderBy: { createdAt: "desc" },
       }),
     ]);
-    const allEmployees = employees.map(({ googleSubject: _googleSubject, ...e }) => ({
-      ...e,
-      role: effectiveRole({ ...e, googleSubject: _googleSubject }),
-    }));
+
+    // If the database is completely empty or missing seed records, self-heal immediately
+    if (employees.length === 0 || pairs.length === 0) {
+      try {
+        await ensureDemoData();
+        [cohorts, employees, allSurveys, legacyNotes] = await Promise.all([
+          prisma.cohort.findMany({ orderBy: { startDate: "desc" } }),
+          prisma.employee.findMany({ orderBy: { name: "asc" } }),
+          prisma.surveyFeedback.findMany(),
+          prisma.privateNote.findMany({
+            where: { pairId: null },
+            orderBy: { createdAt: "desc" },
+          }),
+        ]);
+        pairs = await prisma.mentoringPair.findMany({
+          include: {
+            mentor: { omit: { googleSubject: true } },
+            mentee: { omit: { googleSubject: true } },
+            cohort: true,
+            sessions: {
+              orderBy: { weekNumber: "asc" },
+              include: { actionItems: true },
+            },
+            surveys: true,
+          },
+          orderBy: { createdAt: "desc" },
+        });
+      } catch (seedErr) {
+        console.warn("Auto seed notice:", seedErr);
+      }
+    }
+
+    const allEmployees = employees.map(
+      ({ googleSubject: _googleSubject, ...e }) => ({
+        ...e,
+        role: effectiveRole({ ...e, googleSubject: _googleSubject }),
+      }),
+    );
+
     return NextResponse.json({
       pairs,
       cohorts,
@@ -51,9 +91,11 @@ export const GET = protectedRoute(async (_req: NextRequest) => {
       totalMentors: allEmployees.filter((e) => e.role === "MENTOR").length,
     });
   }
+
   const actionItems = await prisma.actionItem.findMany({
     where: { employeeCode: user.employeeCode, status: { not: "COMPLETED" } },
     orderBy: { dueDate: "asc" },
   });
+
   return NextResponse.json({ pair: pairs[0] ?? null, pairs, actionItems });
 });
