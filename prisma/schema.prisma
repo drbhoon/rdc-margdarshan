@@ -127,6 +127,9 @@ model Session {
   
   postSessionReflectionMentee String?
   postSessionReflectionMentor String?
+  mentorComments             String?
+  meetingNotes               String?
+  transcriptionNotes         String?
   
   actionItems                ActionItem[]
   @@unique([pairId, weekNumber])

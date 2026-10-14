@@ -93,6 +93,18 @@ export default function Dashboard() {
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [suggestions, setSuggestions] = useState<MatchSuggestion[] | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [detailModal, setDetailModal] = useState<{
+    type:
+      | "incomplete"
+      | "unpaired"
+      | "proposed"
+      | "unscheduled"
+      | "overdue"
+      | "reviews"
+      | "active_pairs"
+      | "completed_calls";
+    title: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/dashboard", { cache: "no-store" });
@@ -383,19 +395,32 @@ export default function Dashboard() {
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
               {[
-                { label: "Incomplete profiles", value: incompleteProfiles.length, tab: "roster" as AdminTab },
-                { label: "Unpaired mentees", value: unpairedMentees.length, tab: "matching" as AdminTab },
-                { label: "Awaiting approval", value: proposedPairsCount, tab: "matching" as AdminTab },
-                { label: "No next meeting", value: unscheduledRelationships.length, tab: "relationships" as AdminTab },
-                { label: "Overdue actions", value: overdueActions.length, tab: "relationships" as AdminTab },
+                { label: "Incomplete profiles", value: incompleteProfiles.length, type: "incomplete" as const },
+                { label: "Unpaired mentees", value: unpairedMentees.length, type: "unpaired" as const },
+                { label: "Awaiting approval", value: proposedPairsCount, type: "proposed" as const },
+                { label: "No next meeting", value: unscheduledRelationships.length, type: "unscheduled" as const },
+                { label: "Overdue actions", value: overdueActions.length, type: "overdue" as const },
               ].map((item) => (
-                <button key={item.label} onClick={() => setActiveTab(item.tab)} className="record text-left hover:border-indigo-300 transition" style={{ margin: 0 }}>
-                  <span className={`text-2xl font-black ${item.value ? "text-amber-600" : "text-emerald-600"}`}>{item.value}</span>
+                <button
+                  key={item.label}
+                  onClick={() => setDetailModal({ type: item.type, title: item.label })}
+                  className="record text-left hover:border-indigo-400 hover:shadow-md transition cursor-pointer"
+                  style={{ margin: 0 }}
+                >
+                  <span className={`text-2xl font-black ${item.value ? "text-amber-600" : "text-emerald-600"}`}>
+                    {item.value}
+                  </span>
                   <span className="block text-xs font-semibold text-slate-600">{item.label}</span>
+                  <span className="block text-[10px] text-indigo-600 font-bold mt-1">View details →</span>
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-slate-500 mt-3">{reviewsOutstanding.length} active relationship(s) have no saved review yet. Open Relationships to inspect the full record.</p>
+            <button
+              onClick={() => setDetailModal({ type: "reviews", title: "Outstanding Growth Reviews" })}
+              className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold mt-3 block text-left cursor-pointer"
+            >
+              {reviewsOutstanding.length} active relationship(s) have no saved review yet. Click to view outstanding reviews →
+            </button>
           </section>
         ) : (
           <section className="bg-white p-5 sm:p-6 rounded-2xl border border-indigo-200 shadow-sm">
@@ -418,27 +443,50 @@ export default function Dashboard() {
 
         {/* Key Metrics Overview Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
+          <button
+            onClick={() => {
+              if (admin) setDetailModal({ type: "active_pairs", title: "Active Coaching Pairs" });
+            }}
+            className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4 text-left transition ${
+              admin ? "hover:border-indigo-300 hover:shadow-md cursor-pointer" : ""
+            }`}
+          >
             <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
               <Users className="w-6 h-6" />
             </div>
             <div>
               <p className="text-2xl font-black text-slate-900">{activePairsCount}</p>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Pairs</p>
+              {admin && <span className="text-[10px] text-indigo-600 font-bold">View details →</span>}
             </div>
-          </div>
+          </button>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
+          <button
+            onClick={() => {
+              if (admin) setDetailModal({ type: "completed_calls", title: "Completed Mentoring Calls" });
+            }}
+            className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4 text-left transition ${
+              admin ? "hover:border-emerald-300 hover:shadow-md cursor-pointer" : ""
+            }`}
+          >
             <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
               <p className="text-2xl font-black text-slate-900">{completedSessionsCount}</p>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Completed Calls</p>
+              {admin && <span className="text-[10px] text-emerald-600 font-bold">View details →</span>}
             </div>
-          </div>
+          </button>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
+          <button
+            onClick={() => {
+              if (admin) setDetailModal({ type: "reviews", title: "Growth Reviews & Ratings" });
+            }}
+            className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4 text-left transition ${
+              admin ? "hover:border-amber-300 hover:shadow-md cursor-pointer" : ""
+            }`}
+          >
             <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
               <TrendingUp className="w-6 h-6" />
             </div>
@@ -447,18 +495,29 @@ export default function Dashboard() {
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Growth · {surveys.length} reviews
               </p>
+              {admin && <span className="text-[10px] text-amber-600 font-bold">View details →</span>}
             </div>
-          </div>
+          </button>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
+          <button
+            onClick={() => {
+              if (admin) {
+                setActiveTab("roster");
+              }
+            }}
+            className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4 text-left transition ${
+              admin ? "hover:border-blue-300 hover:shadow-md cursor-pointer" : ""
+            }`}
+          >
             <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
               <Briefcase className="w-6 h-6" />
             </div>
             <div>
               <p className="text-2xl font-black text-slate-900">{admin ? roster.length : (data?.actionItems?.length ?? 0)}</p>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{admin ? "Registered Roster" : "Open Actions"}</p>
+              {admin && <span className="text-[10px] text-blue-600 font-bold">Open roster →</span>}
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Daily Inspiration */}
@@ -859,7 +918,7 @@ export default function Dashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                     {filteredPairs.map((p) => {
                       const completedCount = p.sessions.filter((s) => s.status === "COMPLETED").length;
-                      const progressPct = Math.round((completedCount / 13) * 100);
+                      const progressPct = Math.min(100, Math.round((completedCount / 12) * 100));
 
                       return (
                         <div
@@ -881,8 +940,8 @@ export default function Dashboard() {
                                 {p.isOffRecord ? " · OFF RECORD" : ""}
                               </span>
 
-                              <span className="text-[11px] font-bold text-slate-400">
-                                Week {completedCount}/13
+                              <span className="text-[11px] font-bold text-slate-500">
+                                {completedCount} of 12 completed ({progressPct}%)
                               </span>
                             </div>
 
@@ -911,16 +970,16 @@ export default function Dashboard() {
                               </div>
                             </div>
 
-                            {/* 13-Week Visual Progress Bar */}
+                            {/* 12-Week Visual Progress Bar */}
                             <div className="space-y-1.5 pt-2">
                               <div className="flex justify-between text-[10px] font-bold text-slate-500">
                                 <span>12-Week Roadmap</span>
                                 <span>{progressPct}%</span>
                               </div>
-                              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                                 <div
                                   className="bg-indigo-600 h-full rounded-full transition-all duration-500"
-                                  style={{ width: `${progressPct}%` }}
+                                  style={{ width: `${Math.max(progressPct, completedCount > 0 ? 8 : 0)}%` }}
                                 ></div>
                               </div>
                             </div>
@@ -1281,7 +1340,7 @@ export default function Dashboard() {
                     const isMeMentee = p.mentee.employeeCode === user.employeeCode;
                     const partner = isMeMentee ? p.mentor : p.mentee;
                     const completedCount = p.sessions.filter((s) => s.status === "COMPLETED").length;
-                    const progressPct = Math.round((completedCount / 13) * 100);
+                    const progressPct = Math.min(100, Math.round((completedCount / 12) * 100));
 
                     return (
                       <div
@@ -1292,7 +1351,7 @@ export default function Dashboard() {
                           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
                             ● {p.status}
                           </span>
-                          <span className="text-xs font-bold text-slate-400">Week {completedCount}/13</span>
+                          <span className="text-xs font-bold text-slate-500">{completedCount} of 12 completed ({progressPct}%)</span>
                         </div>
 
                         <div className="flex items-center gap-3 pt-1">
@@ -1335,10 +1394,10 @@ export default function Dashboard() {
                             <span>Journey Completion</span>
                             <span>{progressPct}%</span>
                           </div>
-                          <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                          <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
                             <div
                               className="bg-indigo-600 h-full rounded-full transition-all duration-500"
-                              style={{ width: `${progressPct}%` }}
+                              style={{ width: `${Math.max(progressPct, completedCount > 0 ? 8 : 0)}%` }}
                             ></div>
                           </div>
                         </div>
@@ -1394,6 +1453,396 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* DETAIL DRILLDOWN MODAL FOR ADMIN METRICS & TABS                           */}
+        {/* ========================================================================= */}
+        {detailModal && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                    <Layers className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">{detailModal.title}</h3>
+                    <p className="text-xs text-slate-500">Administrator Detailed Drilldown</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDetailModal(null)}
+                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
+                {detailModal.type === "incomplete" && (
+                  incompleteProfiles.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500">
+                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                      <p className="font-bold text-slate-800">All profiles are complete!</p>
+                      <p className="text-xs text-slate-400">Every active employee has completed career goals, availability, topics, and DISC.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-500">The following {incompleteProfiles.length} employee(s) have incomplete profiles:</p>
+                      {incompleteProfiles.map((emp) => {
+                        const missing = [
+                          !emp.careerGoals && "Career Goals",
+                          (!emp.topics || emp.topics.length === 0) && "Topics",
+                          !emp.availability && "Availability",
+                          !emp.discStyle && "DISC Profile",
+                        ].filter(Boolean);
+
+                        return (
+                          <div key={emp.employeeCode} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-slate-900 text-sm">{emp.name}</span>
+                                <span className="text-xs font-mono text-slate-400">({emp.employeeCode})</span>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 text-slate-700">{emp.role}</span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5">{emp.designation} · {emp.department} · {emp.location || "Location pending"}</p>
+                              <div className="flex flex-wrap gap-1.5 mt-2">
+                                {missing.map((m) => (
+                                  <span key={m as string} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                    Missing {m}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setActiveTab("roster");
+                                setSearch(emp.employeeCode);
+                                setDetailModal(null);
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
+                            >
+                              Inspect in Roster →
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+
+                {detailModal.type === "unpaired" && (
+                  unpairedMentees.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500">
+                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                      <p className="font-bold text-slate-800">All mentees are paired!</p>
+                      <p className="text-xs text-slate-400">There are no unpaired mentees awaiting a coaching partner.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-500">The following {unpairedMentees.length} mentee(s) do not currently have a mentor relationship:</p>
+                      {unpairedMentees.map((mentee) => (
+                        <div key={mentee.employeeCode} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-slate-900 text-sm">{mentee.name}</span>
+                              <span className="text-xs font-mono text-slate-400">({mentee.employeeCode})</span>
+                              {mentee.discStyle && (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                  DISC: {mentee.discStyle}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5">{mentee.designation} · {mentee.department} · {mentee.location || "Location unassigned"}</p>
+                            {mentee.topics && mentee.topics.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {mentee.topics.slice(0, 3).map((t) => (
+                                  <span key={t} className="px-2 py-0.5 rounded text-[10px] bg-slate-200/80 text-slate-700">{t}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => {
+                              setActiveTab("matching");
+                              setDetailModal(null);
+                              void fetchMatchSuggestions();
+                            }}
+                            className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
+                          >
+                            Find Mentor Match →
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+
+                {detailModal.type === "proposed" && (
+                  (() => {
+                    const proposedList = pairs.filter((p) => ["PROPOSED", "PENDING_ACCEPTANCE"].includes(p.status));
+                    return proposedList.length === 0 ? (
+                      <div className="text-center py-8 text-slate-500">
+                        <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                        <p className="font-bold text-slate-800">No relationships awaiting approval</p>
+                        <p className="text-xs text-slate-400">All pair proposals have been accepted or activated.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-xs text-slate-500">{proposedList.length} coaching relationship(s) are pending approval or participant acceptance:</p>
+                        {proposedList.map((p) => (
+                          <div key={p.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-slate-900 text-sm">{p.mentee.name}</span>
+                                <span className="text-xs text-slate-400">with</span>
+                                <span className="font-extrabold text-slate-900 text-sm">{p.mentor.name}</span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Mentee: {p.mentee.department} · Mentor: {p.mentor.department}
+                              </p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">
+                                  ● {p.status}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setActiveTab("matching");
+                                setDetailModal(null);
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
+                            >
+                              Review in Matching →
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()
+                )}
+
+                {detailModal.type === "unscheduled" && (
+                  unscheduledRelationships.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500">
+                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                      <p className="font-bold text-slate-800">All active relationships have meetings planned!</p>
+                      <p className="text-xs text-slate-400">No active pair is missing a scheduled upcoming check-in.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-500">{unscheduledRelationships.length} active pair(s) have no upcoming meeting scheduled in the portal:</p>
+                      {unscheduledRelationships.map((p) => {
+                        const completedCount = p.sessions.filter((s) => s.status === "COMPLETED").length;
+                        return (
+                          <div key={p.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-extrabold text-slate-900 text-sm">{p.mentee.name}</span>
+                                <span className="text-xs text-slate-400">&</span>
+                                <span className="font-extrabold text-slate-900 text-sm">{p.mentor.name}</span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Progress: {completedCount} of 12 sessions completed
+                              </p>
+                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 mt-1.5">
+                                ⚠️ No upcoming meeting time saved
+                              </span>
+                            </div>
+                            <Link
+                              href={"/space/" + p.id}
+                              className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
+                            >
+                              Open Coaching Space →
+                            </Link>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+
+                {detailModal.type === "overdue" && (
+                  overdueActions.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500">
+                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                      <p className="font-bold text-slate-800">No overdue action items!</p>
+                      <p className="text-xs text-slate-400">All coaching commitments across pairs are on schedule.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-500">{overdueActions.length} action item(s) are past their agreed completion date:</p>
+                      {overdueActions.map((act) => {
+                        const owner = roster.find((e) => e.employeeCode === act.employeeCode);
+                        return (
+                          <div key={act.id} className="p-4 rounded-2xl border border-rose-200 bg-rose-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <p className="font-extrabold text-slate-900 text-sm">{act.title}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Assigned to: <strong>{owner?.name || act.employeeCode}</strong> ({owner?.role || "Participant"})
+                              </p>
+                              <div className="flex items-center gap-2 mt-1.5">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
+                                  Due: {new Date(act.dueDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })} (OVERDUE)
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+
+                {detailModal.type === "reviews" && (
+                  (() => {
+                    const allRev = data?.allSurveys ?? pairs.flatMap((p) => p.surveys);
+                    return allRev.length === 0 ? (
+                      <div className="text-center py-8 text-slate-500">
+                        <TrendingUp className="w-10 h-10 text-amber-500 mx-auto mb-2" />
+                        <p className="font-bold text-slate-800">No reviews submitted yet</p>
+                        <p className="text-xs text-slate-400">Formal midpoint (Week 6) and closing (Week 12) reviews will appear here once submitted.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-xs text-slate-500">{allRev.length} growth review(s) recorded across cohorts:</p>
+                        {allRev.map((rev, idx) => {
+                          const surveyItem = rev as any;
+                          const author = roster.find((e) => e.employeeCode === surveyItem.employeeCode);
+                          return (
+                            <div key={idx} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="font-extrabold text-slate-900 text-sm">
+                                  {author?.name || surveyItem.employeeCode || "Participant"}
+                                </span>
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-50 text-amber-700 border border-amber-200">
+                                  ★ {surveyItem.growthRating} / 5
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500">
+                                {surveyItem.weekNumber ? `Week ${surveyItem.weekNumber} Milestone Review` : "Growth Review"}
+                              </p>
+                              {surveyItem.feedbackText && (
+                                <p className="text-xs text-slate-700 bg-white p-3 rounded-xl border border-slate-100 whitespace-pre-wrap leading-relaxed mt-2">
+                                  {surveyItem.feedbackText}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()
+                )}
+
+                {detailModal.type === "active_pairs" && (
+                  (() => {
+                    const activeList = pairs.filter((p) => p.status === "ACTIVE");
+                    return activeList.length === 0 ? (
+                      <div className="text-center py-8 text-slate-500">
+                        <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                        <p className="font-bold text-slate-800">No active coaching pairs currently</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-xs text-slate-500">{activeList.length} active mentoring relationship(s) in progress:</p>
+                        {activeList.map((p) => {
+                          const completedCount = p.sessions.filter((s) => s.status === "COMPLETED").length;
+                          const progressPct = Math.min(100, Math.round((completedCount / 12) * 100));
+                          return (
+                            <div key={p.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-extrabold text-slate-900 text-sm">{p.mentee.name}</span>
+                                  <span className="text-xs text-slate-400">&</span>
+                                  <span className="font-extrabold text-slate-900 text-sm">{p.mentor.name}</span>
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                  Mentee: {p.mentee.department} · Mentor: {p.mentor.department}
+                                </p>
+                                <div className="flex items-center gap-2 pt-1">
+                                  <div className="w-32 bg-slate-200 h-2 rounded-full overflow-hidden">
+                                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${Math.max(progressPct, completedCount > 0 ? 8 : 0)}%` }}></div>
+                                  </div>
+                                  <span className="text-[11px] font-bold text-slate-600">{completedCount}/12 weeks ({progressPct}%)</span>
+                                </div>
+                              </div>
+                              <Link
+                                href={"/space/" + p.id}
+                                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
+                              >
+                                Open Space →
+                              </Link>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()
+                )}
+
+                {detailModal.type === "completed_calls" && (
+                  (() => {
+                    const completedSessions = pairs.flatMap((p) =>
+                      p.sessions
+                        .filter((s) => s.status === "COMPLETED")
+                        .map((s) => ({ session: s, pair: p })),
+                    );
+                    return completedSessions.length === 0 ? (
+                      <div className="text-center py-8 text-slate-500">
+                        <CheckCircle2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                        <p className="font-bold text-slate-800">No completed sessions logged yet</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-xs text-slate-500">{completedSessions.length} mentoring session(s) marked completed:</p>
+                        {completedSessions.map(({ session: s, pair: p }) => (
+                          <div key={s.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-900 text-sm">Week {s.weekNumber} Session</span>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  ✓ Completed
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {p.mentee.name} (Mentee) with {p.mentor.name} (Mentor)
+                              </p>
+                              {s.scheduledTime && (
+                                <p className="text-[11px] text-slate-400 mt-1">
+                                  Time: {new Date(s.scheduledTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })} IST
+                                </p>
+                              )}
+                            </div>
+                            <Link
+                              href={"/space/" + p.id}
+                              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
+                            >
+                              Inspect Record →
+                            </Link>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex justify-end">
+                <button
+                  onClick={() => setDetailModal(null)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition cursor-pointer"
+                >
+                  Close Drilldown
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>

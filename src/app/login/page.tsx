@@ -42,7 +42,7 @@ export default function LoginPage() {
             </h1>
             <p className="mt-3 text-lg font-bold text-slate-300">Margdarshan <span className="text-indigo-300 font-normal" lang="hi">मार्गदर्शन</span></p>
           </div>
-          <p className="text-sm text-slate-300 leading-relaxed max-w-lg">Prepare, meet, agree actions, follow through and reflect across a guided 13-session mentoring journey for RDC employees.</p>
+          <p className="text-sm text-slate-300 leading-relaxed max-w-lg">Prepare, meet, agree actions, follow through and reflect across a guided 12-session mentoring journey for RDC employees.</p>
           <p className="text-xs text-indigo-200/90" lang="hi">तैयारी करें, बातचीत करें, कार्य तय करें और प्रगति को सहेजें।</p>
 
           {error && <div className="p-4 bg-rose-950/80 border border-rose-500/40 text-rose-200 rounded-2xl flex gap-3 text-xs"><AlertCircle className="w-5 h-5 shrink-0" />{error}</div>}

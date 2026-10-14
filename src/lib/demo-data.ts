@@ -248,27 +248,33 @@ export async function ensureDemoData() {
       },
     });
 
-    // Create initial 13 sessions
-    for (let w = 0; w <= 12; w++) {
-      const isWeek0 = w === 0;
+    // Create initial 12 sessions (Weeks 1 to 12)
+    for (let w = 1; w <= 12; w++) {
+      const isWeek1 = w === 1;
       await prisma.session.create({
         data: {
           pairId: pair1.id,
           weekNumber: w,
-          status: isWeek0 ? "COMPLETED" : "SCHEDULED",
-          agenda: isWeek0
+          status: isWeek1 ? "COMPLETED" : "SCHEDULED",
+          agenda: isWeek1
             ? "Alignment, Expectations & DISC Harmony"
             : `Week ${w} Operational Check-in & Growth Milestone`,
-          scheduledTime: isWeek0
+          scheduledTime: isWeek1
             ? new Date(Date.now() - 7 * 86400000)
             : new Date(Date.now() + (w * 7) * 86400000),
           googleMeetLink: `https://meet.google.com/rdc-mar-${w + 100}`,
-          discussionPoints: isWeek0
+          preSessionNotes: isWeek1 ? "Reviewed batching plant telemetry and prepared 3 operational questions on TM cycle times." : null,
+          discussionPoints: isWeek1
             ? "Reviewed DISC complementary traits (D & S). Established weekly check-in cadence."
             : null,
-          commitments: isWeek0
+          insights: isWeek1 ? "Proactive communication with dispatchers avoids site congestion." : null,
+          commitments: isWeek1
             ? "Amit to shadow morning batching plant dispatch and practice radio communications."
             : null,
+          supportNeeded: isWeek1 ? "Access to SCADA plant logging records." : null,
+          mentorComments: isWeek1 ? "Amit showed great enthusiasm in understanding dispatch dynamics. Advised him to focus on assertive radio communications during peak morning pour hours." : null,
+          postSessionReflectionMentee: isWeek1 ? "Understood that assertiveness is about clarity, not aggression." : null,
+          postSessionReflectionMentor: isWeek1 ? "Good initial curiosity. Will observe his site coordination this Thursday." : null,
         },
       });
     }
@@ -300,27 +306,30 @@ export async function ensureDemoData() {
       },
     });
 
-    // Create initial 13 sessions
-    for (let w = 0; w <= 12; w++) {
-      const isWeek0 = w === 0;
+    // Create initial 12 sessions (Weeks 1 to 12)
+    for (let w = 1; w <= 12; w++) {
+      const isWeek1 = w === 1;
       await prisma.session.create({
         data: {
           pairId: pair2.id,
           weekNumber: w,
-          status: isWeek0 ? "COMPLETED" : "SCHEDULED",
-          agenda: isWeek0
+          status: isWeek1 ? "COMPLETED" : "SCHEDULED",
+          agenda: isWeek1
             ? "Introductory Alignment & Quality Standards"
             : `Week ${w} Quality & Plant Maintenance Review`,
-          scheduledTime: isWeek0
+          scheduledTime: isWeek1
             ? new Date(Date.now() - 5 * 86400000)
             : new Date(Date.now() + (w * 7 + 2) * 86400000),
           googleMeetLink: `https://meet.google.com/rdc-sha-${w + 200}`,
-          discussionPoints: isWeek0
+          preSessionNotes: isWeek1 ? "Prepared questions on slump test variations during high ambient temperature pours." : null,
+          discussionPoints: isWeek1
             ? "Discussed DISC synergy (C & I) and set target for concrete slump testing precision."
             : null,
-          commitments: isWeek0
-            ? "Priya to log daily moisture test records and review batching tolerances."
-            : null,
+          insights: isWeek1 ? "Ice dosage and retarder timing are critical in hot weather concreting." : null,
+          commitments: isWeek1 ? "Priya to conduct calibration test on moisture probe sensor." : null,
+          supportNeeded: isWeek1 ? "Lab calibration kit assistance." : null,
+          mentorComments: isWeek1 ? "Priya grasps technical nuances quickly. Guided her on maintaining testing logs compliant with IS 456 & IS 1199." : null,
+          postSessionReflectionMentee: isWeek1 ? "Need to ensure calibration is verified before starting batching each morning." : null,
         },
       });
     }

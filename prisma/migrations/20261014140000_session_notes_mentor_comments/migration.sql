@@ -1,0 +1,6 @@
+-- AlterTable
+BEGIN;
+ALTER TABLE "Session" ADD COLUMN IF NOT EXISTS "mentorComments" TEXT;
+ALTER TABLE "Session" ADD COLUMN IF NOT EXISTS "meetingNotes" TEXT;
+ALTER TABLE "Session" ADD COLUMN IF NOT EXISTS "transcriptionNotes" TEXT;
+COMMIT;

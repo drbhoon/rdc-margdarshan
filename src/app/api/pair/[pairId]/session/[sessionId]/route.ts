@@ -44,8 +44,18 @@ export const PUT = protectedRoute(
         "insights",
         "commitments",
         "supportNeeded",
+        "meetingNotes",
+        "transcriptionNotes",
       ] as const)
         if (body[key] !== undefined) data[key] = textValue(body[key]);
+
+      if (body.mentorComments !== undefined) {
+        if (user.role !== "ADMIN" && user.employeeCode !== pair.mentorCode) {
+          throw new AccessError(403, "Only the mentor or administrator can write mentor guidance comments.");
+        }
+        data.mentorComments = textValue(body.mentorComments);
+      }
+
       for (const [key, owner] of [
         ["postSessionReflectionMentee", pair.menteeCode],
         ["postSessionReflectionMentor", pair.mentorCode],
@@ -95,11 +105,23 @@ export const PUT = protectedRoute(
         }
         data.googleMeetLink = value || null;
       }
-      if (body.isRecordingConsentGranted === true)
-        throw new AccessError(
-          400,
-          "Audio/video recording is not available. Save written coaching notes instead.",
-        );
+      if (body.recordingUrl !== undefined) {
+        const value = textValue(body.recordingUrl, 2000);
+        if (value) {
+          let url: URL;
+          try {
+            url = new URL(value);
+          } catch {
+            throw new AccessError(400, "Invalid recording link.");
+          }
+          if (url.protocol !== "https:" && url.protocol !== "http:")
+            throw new AccessError(400, "Use a valid web link for the recording.");
+        }
+        data.recordingUrl = value || null;
+      }
+      if (body.isRecordingConsentGranted !== undefined) {
+        data.isRecordingConsentGranted = Boolean(body.isRecordingConsentGranted);
+      }
       const result = await tx.session.update({
         where: { id: sessionId },
         data,

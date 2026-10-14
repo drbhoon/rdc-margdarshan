@@ -24,6 +24,7 @@ type Person = {
   challenges?: string[];
   availability?: string | null;
 };
+
 type SessionRecord = {
   id: string;
   weekNumber: number;
@@ -37,9 +38,14 @@ type SessionRecord = {
   insights: string | null;
   commitments: string | null;
   supportNeeded: string | null;
+  mentorComments?: string | null;
+  meetingNotes?: string | null;
+  transcriptionNotes?: string | null;
+  recordingUrl?: string | null;
   postSessionReflectionMentee: string | null;
   postSessionReflectionMentor: string | null;
 };
+
 type Action = {
   id: string;
   sessionId: string;
@@ -51,6 +57,7 @@ type Action = {
   updatedAt: string;
   evidence: string | null;
 };
+
 type Note = {
   id: string;
   content: string;
@@ -59,6 +66,7 @@ type Note = {
   createdAt?: string;
   updatedAt?: string;
 };
+
 type Survey = {
   id: string;
   employeeCode: string;
@@ -66,6 +74,7 @@ type Survey = {
   growthRating: number;
   feedbackText: string;
 };
+
 type Chat = {
   id: string;
   employeeCode: string;
@@ -75,6 +84,7 @@ type Chat = {
   mode: string;
   createdAt: string;
 };
+
 type Pair = {
   id: string;
   version: number;
@@ -93,22 +103,24 @@ type Pair = {
   surveys: Survey[];
   coachingMessages: Chat[];
 };
+
 type Space = { pair: Pair; actionItems: Action[] };
-const themes = [
-  "Agreement & expectations",
-  "Communication & assertiveness",
-  "Skills & strengths",
-  "Career direction & planning",
-  "Focus & resource responsibility",
-  "Feedback & trust",
-  "Midpoint review",
-  "Stakeholder relationships",
-  "Problem solving & asset care",
-  "Difficult conversations",
-  "Teamwork & delegation",
-  "Sustaining progress & safety",
-  "Growth review & next steps",
-];
+
+const themes: Record<number, string> = {
+  1: "Agreement & expectations",
+  2: "Communication & assertiveness",
+  3: "Skills & strengths",
+  4: "Career direction & planning",
+  5: "Focus & resource responsibility",
+  6: "Midpoint review & feedback",
+  7: "Stakeholder relationships & trust",
+  8: "Problem solving & asset care",
+  9: "Difficult conversations",
+  10: "Teamwork & delegation",
+  11: "Sustaining progress & safety",
+  12: "Growth review & next steps",
+};
+
 const fields = [
   ["agenda", "Agenda / चर्चा की योजना"],
   ["preSessionNotes", "Preparation / तैयारी"],
@@ -117,24 +129,26 @@ const fields = [
   ["commitments", "Commitments / संकल्प"],
   ["supportNeeded", "Support needed / सहयोग"],
 ] as const;
-const preparationFields = fields.slice(0, 2);
-const reflectionFields = fields.slice(2);
+
 const displayTime = (value: string) =>
   new Date(value).toLocaleString("en-IN", {
     timeZone: "Asia/Kolkata",
     dateStyle: "medium",
     timeStyle: "short",
   }) + " IST";
+
 const istInput = (value: string | null) =>
   value
     ? new Date(new Date(value).getTime() + 19800000).toISOString().slice(0, 16)
     : "";
+
 type Send = (path: string, method: string, body: unknown) => Promise<boolean>;
 
 function SessionEditor({
   record,
   pair,
   userCode,
+  userRole,
   blocked,
   send,
   dirtyChanged,
@@ -142,6 +156,7 @@ function SessionEditor({
   record: SessionRecord;
   pair: Pair;
   userCode: string;
+  userRole: string;
   blocked: boolean;
   send: Send;
   dirtyChanged: (id: string, dirty: boolean) => void;
@@ -149,31 +164,148 @@ function SessionEditor({
   const form = useRef<HTMLFormElement>(null);
   const [base, setBase] = useState(record);
   const [dirty, setDirty] = useState(false);
-  if (!dirty && base.version !== record.version) setBase(record);
+  const [showEmbeddedMeeting, setShowEmbeddedMeeting] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptionDraft, setTranscriptionDraft] = useState(record.transcriptionNotes || "");
+  const recognitionRef = useRef<any>(null);
+
+  const isMentor = userCode === pair.mentorCode || userRole === "ADMIN";
+  const isMentee = userCode === pair.menteeCode;
+
+  if (!dirty && base.version !== record.version) {
+    setBase(record);
+    setTranscriptionDraft(record.transcriptionNotes || "");
+  }
+
   useEffect(() => {
-    if (!dirty) form.current?.reset();
-  }, [base, dirty]);
-  const reflection =
-    userCode === pair.menteeCode
-      ? "postSessionReflectionMentee"
-      : userCode === pair.mentorCode
-        ? "postSessionReflectionMentor"
-        : null;
+    if (!dirty) {
+      form.current?.reset();
+      setTranscriptionDraft(record.transcriptionNotes || "");
+    }
+  }, [base, dirty, record.transcriptionNotes]);
+
+  // Handle Speech-to-Text Auto-Transcription
+  const toggleSpeechRecognition = () => {
+    if (isTranscribing) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsTranscribing(false);
+      return;
+    }
+
+    const SpeechRec =
+      (window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any }).SpeechRecognition ||
+      (window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any }).webkitSpeechRecognition;
+
+    if (!SpeechRec) {
+      alert("Live auto-transcription uses Web Speech API. Please use Google Chrome or Microsoft Edge for live voice recognition.");
+      return;
+    }
+
+    try {
+      const rec = new SpeechRec();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = "en-IN";
+
+      rec.onresult = (event: any) => {
+        let finalChunk = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalChunk += event.results[i][0].transcript + " ";
+          }
+        }
+        if (finalChunk) {
+          setTranscriptionDraft((prev) => {
+            const updated = prev ? `${prev.trim()}\n${finalChunk.trim()}` : finalChunk.trim();
+            setDirty(true);
+            dirtyChanged(record.id, true);
+            return updated;
+          });
+        }
+      };
+
+      rec.onerror = (event: any) => {
+        console.warn("Speech recognition notice:", event.error);
+        setIsTranscribing(false);
+      };
+
+      rec.onend = () => {
+        setIsTranscribing(false);
+      };
+
+      rec.start();
+      recognitionRef.current = rec;
+      setIsTranscribing(true);
+    } catch (err) {
+      console.error("Speech recognition startup error:", err);
+      setIsTranscribing(false);
+    }
+  };
+
+  // 1-Click Toggle Session Status
+  const toggleSessionCompletion = async () => {
+    const nextStatus = record.status === "COMPLETED" ? "SCHEDULED" : "COMPLETED";
+    const payload = {
+      version: record.version,
+      status: nextStatus,
+    };
+    if (await send("/session/" + record.id, "PUT", payload)) {
+      setDirty(false);
+      dirtyChanged(record.id, false);
+    }
+  };
+
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     const payload: Record<string, unknown> = { version: base.version };
-    for (const [key] of fields) payload[key] = String(data.get(key) ?? "");
-    if (reflection) payload[reflection] = String(data.get(reflection) ?? "");
-    payload.status = String(data.get("status"));
+
+    // Standard session preparation / shared fields
+    for (const [key] of fields) {
+      const val = data.get(key);
+      if (val !== null) payload[key] = String(val);
+    }
+
+    // Role-specific reflections
+    if (isMentee && data.get("postSessionReflectionMentee") !== null) {
+      payload.postSessionReflectionMentee = String(data.get("postSessionReflectionMentee") ?? "");
+    }
+    if (isMentor && data.get("postSessionReflectionMentor") !== null) {
+      payload.postSessionReflectionMentor = String(data.get("postSessionReflectionMentor") ?? "");
+    }
+
+    // Mentor comments
+    if (isMentor && data.get("mentorComments") !== null) {
+      payload.mentorComments = String(data.get("mentorComments") ?? "");
+    }
+
+    // Meeting notes and transcription
+    if (data.get("meetingNotes") !== null) {
+      payload.meetingNotes = String(data.get("meetingNotes") ?? "");
+    }
+    if (data.get("recordingUrl") !== null) {
+      payload.recordingUrl = String(data.get("recordingUrl") ?? "");
+    }
+    payload.transcriptionNotes = transcriptionDraft;
+
+    // Status & logistics
+    payload.status = String(data.get("status") || base.status);
     const date = String(data.get("scheduledTime") ?? "");
     payload.scheduledTime = date ? date + ":00+05:30" : null;
     payload.googleMeetLink = String(data.get("googleMeetLink") ?? "");
+
     if (await send("/session/" + record.id, "PUT", payload)) {
       setDirty(false);
       dirtyChanged(record.id, false);
     }
   }
+
+  // Pre-configured embedded meeting room identifier
+  const embeddedRoomUrl = `https://meet.jit.si/Margdarshan-Pair-${pair.id}-Week${record.weekNumber}#config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(
+    isMentor ? pair.mentor.name : pair.mentee.name,
+  )}`;
 
   return (
     <form
@@ -183,6 +315,7 @@ function SessionEditor({
         setDirty(true);
         dirtyChanged(record.id, true);
       }}
+      className="space-y-6"
     >
       {dirty && record.version !== base.version && (
         <p className="notice warning">
@@ -190,124 +323,786 @@ function SessionEditor({
           you need, then reload the saved version.
         </p>
       )}
-      <fieldset disabled={blocked}>
-        <h3>Before the conversation / बातचीत से पहले</h3>
-        <div className="grid">
-          <label>
-            Meeting time (IST) / बैठक का समय
-            <input
-              type="datetime-local"
-              name="scheduledTime"
-              defaultValue={istInput(base.scheduledTime)}
-            />
-          </label>
-          <label>
-            Meeting link / बैठक का लिंक
-            <input
-              type="url"
-              name="googleMeetLink"
-              placeholder="Paste a Google Meet or Teams link"
-              defaultValue={base.googleMeetLink ?? ""}
-            />
-          </label>
-        </div>
-        {base.googleMeetLink && (
-          <div style={{ marginBottom: 12 }}>
-            <a
-              href={base.googleMeetLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="button"
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, padding: "6px 14px" }}
+
+      {/* Top Session Status & 1-Click Completion Header */}
+      <div
+        className="record"
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          backgroundColor: record.status === "COMPLETED" ? "#f0fdf4" : "#f8fafc",
+          borderColor: record.status === "COMPLETED" ? "#86efac" : "#e2e8f0",
+        }}
+      >
+        <div>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              color: record.status === "COMPLETED" ? "#15803d" : "#64748b",
+            }}
+          >
+            Session Status
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+            <span
+              className="pill"
+              style={{
+                backgroundColor: record.status === "COMPLETED" ? "#22c55e" : "#6366f1",
+                color: "#ffffff",
+                fontWeight: 700,
+              }}
             >
-              📹 Open Google Meet Call
-            </a>
+              {record.status === "COMPLETED" ? "✓ COMPLETED" : record.status}
+            </span>
+            <span style={{ fontSize: 13, color: "#475569" }}>
+              Week {record.weekNumber} of 12 · {themes[record.weekNumber]}
+            </span>
           </div>
-        )}
-        <p className="muted" style={{ fontSize: 11, margin: "4px 0 12px 0" }}>
-          Save the real meeting time and link here so both participants can use the same record.
-        </p>
-        <label>
-          Session status
-          <select name="status" defaultValue={base.status}>
-            {["SCHEDULED", "RESCHEDULED", "COMPLETED", "MISSED"].map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-        </label>
-        {preparationFields.map(([key, label]) => (
-          <label key={key}>
-            {label}
-            <textarea
-              name={key}
-              defaultValue={base[key] ?? ""}
-              maxLength={20000}
-            />
-          </label>
-        ))}
-        <h3>After the conversation / बातचीत के बाद</h3>
-        {reflectionFields.map(([key, label]) => (
-          <label key={key}>
-            {label}
-            <textarea name={key} defaultValue={base[key] ?? ""} maxLength={20000} />
-          </label>
-        ))}
-        {reflection && (
-          <label>
-            My reflection / मेरा आत्मचिंतन
-            <textarea
-              name={reflection}
-              defaultValue={base[reflection] ?? ""}
-              maxLength={20000}
-            />
-          </label>
-        )}
-        <button type="submit">Save session record / सहेजें</button>
-      </fieldset>
-      {dirty && (
-        <button
-          type="button"
-          className="secondary"
-          style={{ marginLeft: 8 }}
-          onClick={() => {
-            if (
-              window.confirm(
-                "Discard this unsaved draft and load the saved record?",
-              )
-            ) {
-              setDirty(false);
-              dirtyChanged(record.id, false);
-              setBase(record);
-              form.current?.reset();
-            }
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            type="button"
+            disabled={blocked}
+            onClick={toggleSessionCompletion}
+            style={{
+              backgroundColor: record.status === "COMPLETED" ? "#e2e8f0" : "#16a34a",
+              color: record.status === "COMPLETED" ? "#334155" : "#ffffff",
+              fontWeight: 700,
+              padding: "8px 16px",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontSize: 13,
+              border: "none",
+            }}
+          >
+            {record.status === "COMPLETED"
+              ? "Re-open Week / पुनः खोलें"
+              : "✓ Mark Week as Completed / सत्र पूर्ण हुआ"}
+          </button>
+        </div>
+      </div>
+
+      <fieldset disabled={blocked} className="space-y-6">
+        {/* ========================================================================= */}
+        {/* MEETING LOGISTICS & EMBEDDED VIDEO SUITE                                  */}
+        {/* ========================================================================= */}
+        <section className="record" style={{ backgroundColor: "#f8fafc" }}>
+          <h3 style={{ marginTop: 0 }}>
+            Meeting Logistics & Video Call / बैठक और वीडियो कॉल
+          </h3>
+
+          <div className="grid">
+            <label>
+              Meeting time (IST) / बैठक का समय
+              <input
+                type="datetime-local"
+                name="scheduledTime"
+                defaultValue={istInput(base.scheduledTime)}
+              />
+            </label>
+            <label>
+              Google Meet or Video Call Link / बैठक का लिंक
+              <input
+                type="url"
+                name="googleMeetLink"
+                placeholder="https://meet.google.com/... or paste video URL"
+                defaultValue={base.googleMeetLink ?? ""}
+              />
+            </label>
+          </div>
+
+          {/* Quick Meeting Action Buttons */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
+            {base.googleMeetLink && (
+              <a
+                href={base.googleMeetLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="button"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  padding: "6px 14px",
+                  backgroundColor: "#2563eb",
+                  color: "#fff",
+                }}
+              >
+                📹 Launch Google Meet (New Window)
+              </a>
+            )}
+
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setShowEmbeddedMeeting((v) => !v)}
+              style={{
+                fontSize: 12,
+                padding: "6px 14px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              🖥️ {showEmbeddedMeeting ? "Hide Embedded Video Room" : "Open In-Portal Embedded Meeting"}
+            </button>
+
+            {!base.googleMeetLink && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  const input = form.current?.querySelector<HTMLInputElement>(
+                    'input[name="googleMeetLink"]',
+                  );
+                  if (input) {
+                    input.value = `https://meet.jit.si/Margdarshan-Pair-${pair.id}-Week${record.weekNumber}`;
+                    setDirty(true);
+                    dirtyChanged(record.id, true);
+                  }
+                }}
+                style={{ fontSize: 12, padding: "6px 14px" }}
+              >
+                🔗 Auto-Generate Meeting Link
+              </button>
+            )}
+          </div>
+
+          {/* Embedded Video Call Frame */}
+          {showEmbeddedMeeting && (
+            <div
+              style={{
+                marginTop: 16,
+                border: "2px solid #cbd5e1",
+                borderRadius: 12,
+                overflow: "hidden",
+                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              <div
+                style={{
+                  padding: "8px 12px",
+                  backgroundColor: "#0f172a",
+                  color: "#f8fafc",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontSize: 12,
+                }}
+              >
+                <span>
+                  🟢 Embedded Margdarshan Video Room (Week {record.weekNumber})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowEmbeddedMeeting(false)}
+                  style={{
+                    color: "#94a3b8",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  ✕ Close Room
+                </button>
+              </div>
+              <iframe
+                src={embeddedRoomUrl}
+                allow="camera; microphone; display-capture; autoplay; clipboard-write"
+                style={{ width: "100%", height: "460px", border: "none" }}
+                title="Margdarshan Embedded Video Conference"
+              />
+            </div>
+          )}
+
+          {/* Meeting Recording & Notes Row */}
+          <div className="grid" style={{ marginTop: 14 }}>
+            <label>
+              Session Recording URL / रिकॉर्डिंग लिंक (Google Drive / Meet URL)
+              <input
+                type="url"
+                name="recordingUrl"
+                placeholder="https://drive.google.com/... or recording link"
+                defaultValue={base.recordingUrl ?? ""}
+              />
+            </label>
+            <label>
+              Session Status
+              <select name="status" defaultValue={base.status}>
+                {["SCHEDULED", "RESCHEDULED", "COMPLETED", "MISSED"].map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {base.recordingUrl && (
+            <div style={{ marginTop: 8 }}>
+              <a
+                href={base.recordingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  color: "#4338ca",
+                  fontWeight: 600,
+                }}
+              >
+                ▶️ Watch Saved Session Recording
+              </a>
+            </div>
+          )}
+        </section>
+
+        {/* ========================================================================= */}
+        {/* MENTEE PREPARATION & WEEKLY Q&A RESPONSES                                 */}
+        {/* ========================================================================= */}
+        <section className="record" style={{ backgroundColor: "#ffffff" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 12,
+              borderBottom: "1px solid #e2e8f0",
+              paddingBottom: 8,
+            }}
+          >
+            <div>
+              <h3 style={{ margin: 0, color: "#1e293b" }}>
+                Mentee Q&A Preparation & Learning / मेंटी के उत्तर
+              </h3>
+              <p className="muted" style={{ fontSize: 12, margin: "2px 0 0 0" }}>
+                Mentee: <strong>{pair.mentee.name}</strong> ({pair.mentee.designation})
+              </p>
+            </div>
+            <span
+              className="pill"
+              style={{
+                backgroundColor: isMentee ? "#e0e7ff" : "#f1f5f9",
+                color: isMentee ? "#3730a3" : "#475569",
+              }}
+            >
+              {isMentee ? "You (Mentee Author)" : `${pair.mentee.name}'s Submission`}
+            </span>
+          </div>
+
+          {/* Mentee Editing Mode */}
+          {isMentee ? (
+            <div className="space-y-4">
+              <label>
+                Agenda / चर्चा की योजना
+                <textarea
+                  name="agenda"
+                  defaultValue={base.agenda ?? ""}
+                  placeholder="Key topics to cover in this session..."
+                  maxLength={20000}
+                />
+              </label>
+
+              <label>
+                Preparation / तैयारी
+                <textarea
+                  name="preSessionNotes"
+                  defaultValue={base.preSessionNotes ?? ""}
+                  placeholder="What have you studied, observed, or prepared before this discussion?"
+                  maxLength={20000}
+                />
+              </label>
+
+              <label>
+                What we discussed / चर्चा के मुख्य बिंदु
+                <textarea
+                  name="discussionPoints"
+                  defaultValue={base.discussionPoints ?? ""}
+                  placeholder="Key points and insights explored during the conversation..."
+                  maxLength={20000}
+                />
+              </label>
+
+              <label>
+                Learning & insights / सीख
+                <textarea
+                  name="insights"
+                  defaultValue={base.insights ?? ""}
+                  placeholder="What was your biggest takeaway from this session?"
+                  maxLength={20000}
+                />
+              </label>
+
+              <label>
+                Commitments & Experiments / संकल्प
+                <textarea
+                  name="commitments"
+                  defaultValue={base.commitments ?? ""}
+                  placeholder="Specific actions you will take on the plant/site before the next week..."
+                  maxLength={20000}
+                />
+              </label>
+
+              <label>
+                Support needed / सहयोग
+                <textarea
+                  name="supportNeeded"
+                  defaultValue={base.supportNeeded ?? ""}
+                  placeholder="Support, telemetry access, or coaching needed from mentor/leadership..."
+                  maxLength={20000}
+                />
+              </label>
+
+              <label>
+                My reflection / मेरा आत्मचिंतन
+                <textarea
+                  name="postSessionReflectionMentee"
+                  defaultValue={base.postSessionReflectionMentee ?? ""}
+                  placeholder="Personal reflection on your progress and growth this week..."
+                  maxLength={20000}
+                />
+              </label>
+
+              <button
+                type="submit"
+                style={{
+                  backgroundColor: "#4f46e5",
+                  color: "#fff",
+                  fontWeight: 700,
+                  padding: "8px 18px",
+                  borderRadius: 8,
+                }}
+              >
+                💾 Save My Preparation & Answers / मेरे उत्तर सहेजें
+              </button>
+            </div>
+          ) : (
+            /* Mentor Read View for Mentee Submission */
+            <div className="space-y-3">
+              <div
+                style={{
+                  backgroundColor: "#f8fafc",
+                  padding: 12,
+                  borderRadius: 8,
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div>
+                    <strong style={{ fontSize: 12, color: "#64748b" }}>
+                      1. Agenda / चर्चा की योजना:
+                    </strong>
+                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
+                      {base.agenda || "Not specified yet."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <strong style={{ fontSize: 12, color: "#64748b" }}>
+                      2. Preparation / तैयारी:
+                    </strong>
+                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
+                      {base.preSessionNotes || "Mentee has not added preparation notes yet."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <strong style={{ fontSize: 12, color: "#64748b" }}>
+                      3. What we discussed / चर्चा के मुख्य बिंदु:
+                    </strong>
+                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
+                      {base.discussionPoints || "No discussion points recorded yet."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <strong style={{ fontSize: 12, color: "#64748b" }}>
+                      4. Learning & insights / सीख:
+                    </strong>
+                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
+                      {base.insights || "No learnings recorded yet."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <strong style={{ fontSize: 12, color: "#64748b" }}>
+                      5. Commitments / संकल्प:
+                    </strong>
+                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
+                      {base.commitments || "No commitments recorded yet."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <strong style={{ fontSize: 12, color: "#64748b" }}>
+                      6. Support needed / सहयोग:
+                    </strong>
+                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
+                      {base.supportNeeded || "No support request recorded."}
+                    </p>
+                  </div>
+
+                  <div>
+                    <strong style={{ fontSize: 12, color: "#64748b" }}>
+                      Mentee Reflection / मेंटी का आत्मचिंतन:
+                    </strong>
+                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
+                      {base.postSessionReflectionMentee || "No mentee reflection saved yet."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Optional collaborative editor for mentor */}
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ fontSize: 12, color: "#6366f1", cursor: "pointer" }}>
+                  ✏️ Edit shared session points collaboratively
+                </summary>
+                <div style={{ marginTop: 10 }} className="space-y-3">
+                  <label>
+                    Agenda / चर्चा की योजना
+                    <textarea name="agenda" defaultValue={base.agenda ?? ""} />
+                  </label>
+                  <label>
+                    Discussion Points / चर्चा के मुख्य बिंदु
+                    <textarea
+                      name="discussionPoints"
+                      defaultValue={base.discussionPoints ?? ""}
+                    />
+                  </label>
+                  <label>
+                    Insights / सीख
+                    <textarea name="insights" defaultValue={base.insights ?? ""} />
+                  </label>
+                  <label>
+                    Commitments / संकल्प
+                    <textarea name="commitments" defaultValue={base.commitments ?? ""} />
+                  </label>
+                </div>
+              </details>
+            </div>
+          )}
+        </section>
+
+        {/* ========================================================================= */}
+        {/* MENTOR GUIDANCE & COMMENTS (DIRECTLY BELOW MENTEE ANSWERS)               */}
+        {/* ========================================================================= */}
+        <section
+          className="record"
+          style={{
+            backgroundColor: "#f0fdf4",
+            borderColor: "#bbf7d0",
+            borderWidth: 2,
           }}
         >
-          Reload saved version
-        </button>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 10,
+            }}
+          >
+            <div>
+              <h3 style={{ margin: 0, color: "#166534" }}>
+                Mentor Guidance, Feedback & Comments / मेंटर की टिप्पणियां और मार्गदर्शन
+              </h3>
+              <p style={{ fontSize: 12, color: "#15803d", margin: "2px 0 0 0" }}>
+                Mentor: <strong>{pair.mentor.name}</strong> ({pair.mentor.designation})
+              </p>
+            </div>
+            <span
+              className="pill"
+              style={{
+                backgroundColor: "#dcfce7",
+                color: "#166534",
+                fontWeight: 700,
+              }}
+            >
+              Mentor Review
+            </span>
+          </div>
+
+          {/* If Mentor: Rich Editor for Mentor Comments */}
+          {isMentor ? (
+            <div className="space-y-4">
+              <label>
+                Mentor Guidance & Actionable Feedback for {pair.mentee.name}
+                <textarea
+                  name="mentorComments"
+                  defaultValue={base.mentorComments ?? ""}
+                  placeholder="Share feedback on mentee's answers, praise for initiative, guidance on RDC plant operations, and agreed next steps..."
+                  rows={4}
+                  maxLength={20000}
+                  style={{
+                    borderColor: "#86efac",
+                    backgroundColor: "#ffffff",
+                    fontSize: 13,
+                  }}
+                />
+              </label>
+
+              <label>
+                My Reflection (Mentor) / मेरा आत्मचिंतन (मेंटर)
+                <textarea
+                  name="postSessionReflectionMentor"
+                  defaultValue={base.postSessionReflectionMentor ?? ""}
+                  placeholder="Reflect on your coaching style, listening balance, and progress observed..."
+                  rows={2}
+                  maxLength={20000}
+                />
+              </label>
+
+              <button
+                type="submit"
+                style={{
+                  backgroundColor: "#16a34a",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  padding: "8px 18px",
+                  borderRadius: 8,
+                }}
+              >
+                💾 Save Mentor Feedback & Comments / मार्गदर्शन सहेजें
+              </button>
+            </div>
+          ) : (
+            /* If Mentee: High-Visibility View of Mentor's Feedback */
+            <div
+              style={{
+                backgroundColor: "#ffffff",
+                padding: 14,
+                borderRadius: 8,
+                border: "1px solid #bbf7d0",
+              }}
+            >
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: "50%",
+                    backgroundColor: "#dcfce7",
+                    color: "#166534",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800,
+                    fontSize: 14,
+                    flexShrink: 0,
+                  }}
+                >
+                  {pair.mentor.name.charAt(0)}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p
+                    style={{
+                      margin: "0 0 6px 0",
+                      fontWeight: 700,
+                      fontSize: 13,
+                      color: "#166534",
+                    }}
+                  >
+                    Feedback from {pair.mentor.name}:
+                  </p>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 13,
+                      color: "#1e293b",
+                      whiteSpace: "pre-wrap",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {base.mentorComments ||
+                      "Your mentor has not added guidance comments for this week yet. They will appear here once saved."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ========================================================================= */}
+        {/* IN-PORTAL MEETING NOTES & AUTO-TRANSCRIBE                                 */}
+        {/* ========================================================================= */}
+        <section className="record" style={{ backgroundColor: "#f8fafc" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
+            <div>
+              <h3 style={{ margin: 0 }}>
+                In-Portal Meeting Minutes & Live Transcription
+              </h3>
+              <p className="muted" style={{ fontSize: 12, margin: "2px 0 0 0" }}>
+                Saved securely in the Margdarshan portal for both participants and admins.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={toggleSpeechRecognition}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 12px",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 700,
+                backgroundColor: isTranscribing ? "#ef4444" : "#4f46e5",
+                color: "#ffffff",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              {isTranscribing ? "⏹️ Stop Voice Transcribe" : "🎙️ Start Auto-Transcribe"}
+            </button>
+          </div>
+
+          {isTranscribing && (
+            <div
+              style={{
+                padding: "8px 12px",
+                backgroundColor: "#fee2e2",
+                color: "#b91c1c",
+                borderRadius: 6,
+                fontSize: 12,
+                marginBottom: 8,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  backgroundColor: "#ef4444",
+                  display: "inline-block",
+                }}
+              />
+              Listening to speech via microphone... Transcribed text will appear below.
+            </div>
+          )}
+
+          <div className="grid">
+            <label>
+              Live Meeting Minutes & Decisions / बैठक के मुख्य बिंदु
+              <textarea
+                name="meetingNotes"
+                defaultValue={base.meetingNotes ?? ""}
+                placeholder="Log real-time decisions, technical action points, or customer site takeaways..."
+                rows={3}
+                maxLength={20000}
+              />
+            </label>
+
+            <label>
+              Speech Transcription / स्वचालित ट्रांसक्रिप्शन
+              <textarea
+                value={transcriptionDraft}
+                onChange={(e) => {
+                  setTranscriptionDraft(e.target.value);
+                  setDirty(true);
+                  dirtyChanged(record.id, true);
+                }}
+                placeholder="Auto-transcribed speech will be captured here. You can also edit or copy notes."
+                rows={3}
+                maxLength={20000}
+              />
+            </label>
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <button
+              type="submit"
+              className="secondary"
+              style={{ fontSize: 12, padding: "6px 14px" }}
+            >
+              💾 Save Meeting Notes & Transcription
+            </button>
+          </div>
+        </section>
+      </fieldset>
+
+      {/* Dirty Draft Controls */}
+      {dirty && (
+        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Discard unsaved changes and reload the saved record?",
+                )
+              ) {
+                setDirty(false);
+                dirtyChanged(record.id, false);
+                setBase(record);
+                setTranscriptionDraft(record.transcriptionNotes || "");
+                form.current?.reset();
+              }
+            }}
+          >
+            Reload saved version
+          </button>
+        </div>
       )}
-      <details className="record">
-        <summary>Both participants’ saved reflections</summary>
-        <h3>{pair.mentee.name}</h3>
-        <pre>
-          {record.postSessionReflectionMentee || "No reflection saved yet."}
-        </pre>
-        <h3>{pair.mentor.name}</h3>
-        <pre>
-          {record.postSessionReflectionMentor || "No reflection saved yet."}
-        </pre>
+
+      {/* Historical Reflections Accordion */}
+      <details className="record" style={{ marginTop: 16 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+          View saved reflections from both participants
+        </summary>
+        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+          <div style={{ padding: 10, backgroundColor: "#f8fafc", borderRadius: 6 }}>
+            <strong style={{ fontSize: 12, color: "#64748b" }}>
+              {pair.mentee.name} (Mentee):
+            </strong>
+            <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "#1e293b" }}>
+              {record.postSessionReflectionMentee || "No reflection saved yet."}
+            </p>
+          </div>
+
+          <div style={{ padding: 10, backgroundColor: "#f8fafc", borderRadius: 6 }}>
+            <strong style={{ fontSize: 12, color: "#64748b" }}>
+              {pair.mentor.name} (Mentor):
+            </strong>
+            <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "#1e293b" }}>
+              {record.postSessionReflectionMentor || "No reflection saved yet."}
+            </p>
+          </div>
+        </div>
       </details>
     </form>
   );
 }
+
 export default function MentoringSpace() {
   const { pairId } = useParams<{ pairId: string }>();
   const { user, loading } = useAuth();
-  const [data, setData] = useState<Space | null>(null),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState(""),
-    [busy, setBusy] = useState(false),
-    [week, setWeek] = useState(0),
-    [tab, setTab] = useState("Session");
+  const [data, setData] = useState<Space | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [week, setWeek] = useState(1);
+  const [tab, setTab] = useState("Session");
   const [history, setHistory] = useState<
     Array<{
       id: string;
@@ -318,16 +1113,16 @@ export default function MentoringSpace() {
     }>
   >([]);
   const dirty = useRef(new Set<string>());
+
   const reload = useCallback(async () => {
     const res = await fetch("/api/pair/" + pairId, { cache: "no-store" });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Unable to load records.");
     setData(json);
   }, [pairId]);
-  // Synchronize the open workspace with remote changes without replacing dirty drafts.
+
   useEffect(() => {
     if (!user) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload().catch((e) => setError(e.message));
     const timer = setInterval(
       () =>
@@ -338,6 +1133,7 @@ export default function MentoringSpace() {
     );
     return () => clearInterval(timer);
   }, [user, reload]);
+
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (dirty.current.size) {
@@ -348,6 +1144,7 @@ export default function MentoringSpace() {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, []);
+
   const send: Send = async (path, method, body) => {
     setBusy(true);
     setError("");
@@ -374,6 +1171,7 @@ export default function MentoringSpace() {
       setBusy(false);
     }
   };
+
   if (loading || !user) return <main className="coach">Checking sign-in…</main>;
   if (!data)
     return (
@@ -382,23 +1180,28 @@ export default function MentoringSpace() {
         <p role="alert">{error || "Loading mentoring records…"}</p>
       </main>
     );
-  const pair = data.pair,
-    session = pair.sessions.find((s) => s.weekNumber === week),
-    participant = [pair.mentorCode, pair.menteeCode].includes(
-      user.employeeCode,
-    );
-  const ended = ["TERMINATED", "DECLINED"].includes(pair.status),
-    blocked = busy || pair.isOffRecord || ended;
+
+  const pair = data.pair;
+  const session = pair.sessions.find((s) => s.weekNumber === week);
+  const participant = [pair.mentorCode, pair.menteeCode].includes(
+    user.employeeCode,
+  );
+  const isMentor = user.employeeCode === pair.mentorCode || user.role === "ADMIN";
+  const ended = ["TERMINATED", "DECLINED"].includes(pair.status);
+  const blocked = busy || pair.isOffRecord || ended;
+
   const name = (code?: string) =>
     code === pair.mentorCode
       ? pair.mentor.name
       : code === pair.menteeCode
         ? pair.mentee.name
-        : (code ?? "Unknown author");
+        : code ?? "Unknown author";
+
   const dirtyChanged = (id: string, value: boolean) => {
     if (value) dirty.current.add(id);
     else dirty.current.delete(id);
   };
+
   async function simpleSubmit(
     e: FormEvent<HTMLFormElement>,
     path: string,
@@ -413,6 +1216,11 @@ export default function MentoringSpace() {
       dirty.current.delete(path);
     }
   }
+
+  const completedSessionsCount = pair.sessions.filter(
+    (s) => s.status === "COMPLETED",
+  ).length;
+
   return (
     <main className="coach">
       <header>
@@ -425,6 +1233,7 @@ export default function MentoringSpace() {
         </div>
         <span className="pill">{pair.status}</span>
       </header>
+
       <div className={"notice " + (pair.isOffRecord ? "warning" : "")}>
         <strong>
           {pair.isOffRecord
@@ -434,7 +1243,7 @@ export default function MentoringSpace() {
         <p>
           {pair.isOffRecord
             ? "Saving and new AI requests are paused. Continue your conversation outside the app. Both participants must agree to resume. Earlier saved records remain visible."
-            : "Everything saved here is visible to both participants and the administrators. English and Hindi are welcome. The app does not capture audio or video."}
+            : "Everything saved here is visible to both participants and the administrators. English and Hindi are welcome. Meeting notes, recordings, and transcriptions are saved inside the portal."}
         </p>
         {participant && !ended && (
           <button
@@ -467,6 +1276,7 @@ export default function MentoringSpace() {
           </p>
         )}
       </div>
+
       {error && (
         <p role="alert" className="notice error">
           {error}
@@ -477,6 +1287,8 @@ export default function MentoringSpace() {
           {notice}
         </p>
       )}
+
+      {/* Shared Goals Section */}
       <section className="card">
         <h2>Shared growth goals / साझा विकास लक्ष्य</h2>
         <pre>
@@ -503,6 +1315,8 @@ export default function MentoringSpace() {
           </fieldset>
         </form>
       </section>
+
+      {/* Main Navigation Tabs */}
       <nav>
         {["Session", "Actions", "Journey"].map((t) => (
           <button
@@ -525,25 +1339,34 @@ export default function MentoringSpace() {
           </button>
         ))}
       </nav>
+
+      {/* 12-Week Roadmap Bar */}
       <div className="weeknav" aria-label="Programme weeks">
-        {themes.map((_, i) => (
-          <button key={i} aria-pressed={week === i} onClick={() => setWeek(i)}>
-            Week {i}
-            {pair.sessions.find((s) => s.weekNumber === i)?.status ===
+        {Array.from({ length: 12 }, (_, i) => i + 1).map((w) => (
+          <button key={w} aria-pressed={week === w} onClick={() => setWeek(w)}>
+            Week {w}
+            {pair.sessions.find((s) => s.weekNumber === w)?.status ===
             "COMPLETED"
               ? " ✓"
               : ""}
           </button>
         ))}
       </div>
+
       <p className="muted">
-        Week {week} · {themes[week]} ·{" "}
-        {pair.sessions.filter((s) => s.status === "COMPLETED").length}/13
-        completed
+        Week {week} · {themes[week] || `Week ${week}`} ·{" "}
+        {completedSessionsCount}/12 completed
       </p>
+
+      {/* ========================================================================= */}
+      {/* SESSION TAB                                                               */}
+      {/* ========================================================================= */}
       <section className="card" hidden={tab !== "Session"}>
         <h2>Session record / बैठक का रिकॉर्ड</h2>
-        <div className="record" style={{ backgroundColor: "#eef2ff", borderColor: "#c7d2fe" }}>
+        <div
+          className="record"
+          style={{ backgroundColor: "#eef2ff", borderColor: "#c7d2fe" }}
+        >
           <h3 style={{ marginTop: 0 }}>Conversation card · Week {week}</h3>
           <p className="muted">Use these prompts to keep the meeting practical:</p>
           <ol style={{ marginBottom: 0 }}>
@@ -553,18 +1376,21 @@ export default function MentoringSpace() {
             <li>What will each person do before the next session?</li>
           </ol>
         </div>
+
         {!session && (
           <p>
             Sessions become available after both participants accept the
             invitation.
           </p>
         )}
+
         {pair.sessions.map((s) => (
           <div key={s.id} hidden={s.weekNumber !== week}>
             <SessionEditor
               record={s}
               pair={pair}
               userCode={user.employeeCode}
+              userRole={user.role}
               blocked={blocked}
               send={send}
               dirtyChanged={dirtyChanged}
@@ -572,6 +1398,59 @@ export default function MentoringSpace() {
           </div>
         ))}
       </section>
+
+      {/* ========================================================================= */}
+      {/* ASK COACH AI ASSISTANCE — RESTRICTED TO MENTORS ONLY                       */}
+      {/* ========================================================================= */}
+      {isMentor && (
+        <section className="card" hidden={tab !== "Session"}>
+          <h2>Session coach / बातचीत सहायक (Mentors Only)</h2>
+          <p className="muted">
+            Ask practical questions regarding RDC Concrete plant operations, mentoring GETs, or GROW conversation approaches. Questions and answers are visible to administrators and mentors.
+          </p>
+          {pair.coachingMessages
+            .filter((c) => c.weekNumber === week)
+            .map((c) => (
+              <article key={c.id} className="record">
+                <p className="muted">
+                  {name(c.employeeCode)} · {displayTime(c.createdAt)} ·{" "}
+                  {c.mode === "AI"
+                    ? "AI response"
+                    : c.mode === "PENDING"
+                      ? "Response pending or interrupted"
+                      : "Guided GROW prompt"}
+                </p>
+                <h3 style={{ margin: "4px 0 8px 0" }}>{c.question}</h3>
+                <pre style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+                  {c.answer}
+                </pre>
+              </article>
+            ))}
+          <form
+            onChange={() => dirty.current.add("/ai")}
+            onSubmit={(e) =>
+              void simpleSubmit(e, "/ai", "POST", { weekNumber: week })
+            }
+          >
+            <fieldset disabled={blocked}>
+              <label>
+                Ask coach in English (or Hindi)
+                <textarea
+                  name="message"
+                  maxLength={8000}
+                  required
+                  placeholder="e.g. How do I help my mentee improve transit mixer turnaround time and assertive radio communication?"
+                />
+              </label>
+              <button>Ask coach</button>
+            </fieldset>
+          </form>
+        </section>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ACTIONS TAB                                                               */}
+      {/* ========================================================================= */}
       <section className="card" hidden={tab !== "Actions"}>
         <h2>Actions & evidence / कार्य और प्रमाण</h2>
         {data.actionItems
@@ -650,6 +1529,10 @@ export default function MentoringSpace() {
           </fieldset>
         </form>
       </section>
+
+      {/* ========================================================================= */}
+      {/* JOURNEY TAB                                                               */}
+      {/* ========================================================================= */}
       <section className="card" hidden={tab !== "Journey"}>
         <h2>Communication styles / संवाद शैली</h2>
         <p className="muted">
@@ -732,6 +1615,7 @@ export default function MentoringSpace() {
           );
         })()}
       </section>
+
       {(["Learning journal", "Notebook"] as const).map((t) => (
         <section className="card" hidden={tab !== "Journey"} key={t}>
           <h2>{t}</h2>
@@ -770,47 +1654,10 @@ export default function MentoringSpace() {
           ))}
         </section>
       ))}
-      <section className="card" hidden={tab !== "Session"}>
-        <h2>Session coach / बातचीत सहायक</h2>
-        <p className="muted">
-          Questions are saved and may be sent to the AI provider. Replies are
-          suggestions for discussion, not performance assessments. During
-          off-record mode new requests are blocked; an earlier request may
-          already have been sent.
-        </p>
-        {pair.coachingMessages
-          .filter((c) => c.weekNumber === week)
-          .map((c) => (
-            <article key={c.id} className="record">
-              <p className="muted">
-                {name(c.employeeCode)} · {displayTime(c.createdAt)} ·{" "}
-                {c.mode === "AI"
-                  ? "AI response"
-                  : c.mode === "PENDING"
-                    ? "Response pending or interrupted"
-                    : "Guided GROW prompt"}
-              </p>
-              <h3>{c.question}</h3>
-              <pre>{c.answer}</pre>
-            </article>
-          ))}
-        <form
-          onChange={() => dirty.current.add("/ai")}
-          onSubmit={(e) =>
-            void simpleSubmit(e, "/ai", "POST", { weekNumber: week })
-          }
-        >
-          <fieldset disabled={blocked}>
-            <label>
-              Ask in English or Hindi
-              <textarea name="message" maxLength={8000} required />
-            </label>
-            <button>Ask coach</button>
-          </fieldset>
-        </form>
-      </section>
+
+      {/* Midpoint & Closing Reviews (Week 6 and Week 12) */}
       <section className="card" hidden={tab !== "Journey"}>
-        <h2>Midpoint & closing reviews</h2>
+        <h2>Midpoint & closing reviews (Week 6 & Week 12)</h2>
         {pair.surveys.map((s) => (
           <article key={s.id} className="record">
             <h3>
@@ -850,9 +1697,11 @@ export default function MentoringSpace() {
           </form>
         )}
         {![6, 12].includes(week) && (
-          <p>Select week 6 or 12 to submit a review.</p>
+          <p className="muted">Select Week 6 (Midpoint) or Week 12 (Closing) to submit a formal review.</p>
         )}
       </section>
+
+      {/* Record History */}
       <section className="card" hidden={tab !== "Journey"}>
         <h2>Record history</h2>
         {history.map((h) => (

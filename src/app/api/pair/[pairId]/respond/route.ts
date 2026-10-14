@@ -52,9 +52,9 @@ export const POST = protectedRoute(
       });
       if (status === "ACTIVE")
         await tx.session.createMany({
-          data: Array.from({ length: 13 }, (_, weekNumber) => ({
+          data: Array.from({ length: 12 }, (_, i) => ({
             pairId,
-            weekNumber,
+            weekNumber: i + 1,
           })),
           skipDuplicates: true,
         });
