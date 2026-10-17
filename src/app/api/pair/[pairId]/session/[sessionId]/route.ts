@@ -60,13 +60,17 @@ export const PUT = protectedRoute(
         ["postSessionReflectionMentee", pair.menteeCode],
         ["postSessionReflectionMentor", pair.mentorCode],
       ] as const) {
-        if (body[key] !== undefined && body[key] !== previous[key]) {
-          if (user.employeeCode !== owner)
-            throw new AccessError(
-              403,
-              "Only the author can change their reflection.",
-            );
-          data[key] = textValue(body[key]);
+        if (body[key] !== undefined) {
+          const nextVal = textValue(body[key]);
+          const prevVal = previous[key] ?? "";
+          if (nextVal !== prevVal) {
+            if (user.employeeCode !== owner && user.role !== "ADMIN")
+              throw new AccessError(
+                403,
+                "Only the author can change their reflection.",
+              );
+            data[key] = nextVal;
+          }
         }
       }
       if (body.status !== undefined) {

@@ -269,7 +269,7 @@ function SessionEditor({
     }
 
     // Role-specific reflections
-    if (isMentee && data.get("postSessionReflectionMentee") !== null) {
+    if (data.get("postSessionReflectionMentee") !== null) {
       payload.postSessionReflectionMentee = String(data.get("postSessionReflectionMentee") ?? "");
     }
     if (isMentor && data.get("postSessionReflectionMentor") !== null) {
@@ -599,198 +599,90 @@ function SessionEditor({
             </span>
           </div>
 
-          {/* Mentee Editing Mode */}
-          {isMentee ? (
-            <div className="space-y-4">
-              <label>
-                Agenda / चर्चा की योजना
-                <textarea
-                  name="agenda"
-                  defaultValue={base.agenda ?? ""}
-                  placeholder="Key topics to cover in this session..."
-                  maxLength={20000}
-                />
-              </label>
+          <div className="space-y-4">
+            <label>
+              1. Agenda / चर्चा की योजना
+              <textarea
+                name="agenda"
+                defaultValue={base.agenda ?? ""}
+                placeholder="Key topics to cover in this session..."
+                maxLength={20000}
+              />
+            </label>
 
-              <label>
-                Preparation / तैयारी
-                <textarea
-                  name="preSessionNotes"
-                  defaultValue={base.preSessionNotes ?? ""}
-                  placeholder="What have you studied, observed, or prepared before this discussion?"
-                  maxLength={20000}
-                />
-              </label>
+            <label>
+              2. Preparation / तैयारी
+              <textarea
+                name="preSessionNotes"
+                defaultValue={base.preSessionNotes ?? ""}
+                placeholder="What have you studied, observed, or prepared before this discussion?"
+                maxLength={20000}
+              />
+            </label>
 
-              <label>
-                What we discussed / चर्चा के मुख्य बिंदु
-                <textarea
-                  name="discussionPoints"
-                  defaultValue={base.discussionPoints ?? ""}
-                  placeholder="Key points and insights explored during the conversation..."
-                  maxLength={20000}
-                />
-              </label>
+            <label>
+              3. What we discussed / चर्चा के मुख्य बिंदु
+              <textarea
+                name="discussionPoints"
+                defaultValue={base.discussionPoints ?? ""}
+                placeholder="Key points and insights explored during the conversation..."
+                maxLength={20000}
+              />
+            </label>
 
-              <label>
-                Learning & insights / सीख
-                <textarea
-                  name="insights"
-                  defaultValue={base.insights ?? ""}
-                  placeholder="What was your biggest takeaway from this session?"
-                  maxLength={20000}
-                />
-              </label>
+            <label>
+              4. Learning & insights / सीख
+              <textarea
+                name="insights"
+                defaultValue={base.insights ?? ""}
+                placeholder="What was your biggest takeaway from this session?"
+                maxLength={20000}
+              />
+            </label>
 
-              <label>
-                Commitments & Experiments / संकल्प
-                <textarea
-                  name="commitments"
-                  defaultValue={base.commitments ?? ""}
-                  placeholder="Specific actions you will take on the plant/site before the next week..."
-                  maxLength={20000}
-                />
-              </label>
+            <label>
+              5. Commitments & Experiments / संकल्प
+              <textarea
+                name="commitments"
+                defaultValue={base.commitments ?? ""}
+                placeholder="Specific actions you will take on the plant/site before the next week..."
+                maxLength={20000}
+              />
+            </label>
 
-              <label>
-                Support needed / सहयोग
-                <textarea
-                  name="supportNeeded"
-                  defaultValue={base.supportNeeded ?? ""}
-                  placeholder="Support, telemetry access, or coaching needed from mentor/leadership..."
-                  maxLength={20000}
-                />
-              </label>
+            <label>
+              6. Support needed / सहयोग
+              <textarea
+                name="supportNeeded"
+                defaultValue={base.supportNeeded ?? ""}
+                placeholder="Support, telemetry access, or coaching needed from mentor/leadership..."
+                maxLength={20000}
+              />
+            </label>
 
-              <label>
-                My reflection / मेरा आत्मचिंतन
-                <textarea
-                  name="postSessionReflectionMentee"
-                  defaultValue={base.postSessionReflectionMentee ?? ""}
-                  placeholder="Personal reflection on your progress and growth this week..."
-                  maxLength={20000}
-                />
-              </label>
+            <label>
+              Mentee Reflection / मेंटी का आत्मचिंतन
+              <textarea
+                name="postSessionReflectionMentee"
+                defaultValue={base.postSessionReflectionMentee ?? ""}
+                placeholder="Personal reflection on your progress and growth this week..."
+                maxLength={20000}
+              />
+            </label>
 
-              <button
-                type="submit"
-                style={{
-                  backgroundColor: "#4f46e5",
-                  color: "#fff",
-                  fontWeight: 700,
-                  padding: "8px 18px",
-                  borderRadius: 8,
-                }}
-              >
-                💾 Save My Preparation & Answers / मेरे उत्तर सहेजें
-              </button>
-            </div>
-          ) : (
-            /* Mentor Read View for Mentee Submission */
-            <div className="space-y-3">
-              <div
-                style={{
-                  backgroundColor: "#f8fafc",
-                  padding: 12,
-                  borderRadius: 8,
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div>
-                    <strong style={{ fontSize: 12, color: "#64748b" }}>
-                      1. Agenda / चर्चा की योजना:
-                    </strong>
-                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
-                      {base.agenda || "Not specified yet."}
-                    </p>
-                  </div>
-
-                  <div>
-                    <strong style={{ fontSize: 12, color: "#64748b" }}>
-                      2. Preparation / तैयारी:
-                    </strong>
-                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
-                      {base.preSessionNotes || "Mentee has not added preparation notes yet."}
-                    </p>
-                  </div>
-
-                  <div>
-                    <strong style={{ fontSize: 12, color: "#64748b" }}>
-                      3. What we discussed / चर्चा के मुख्य बिंदु:
-                    </strong>
-                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
-                      {base.discussionPoints || "No discussion points recorded yet."}
-                    </p>
-                  </div>
-
-                  <div>
-                    <strong style={{ fontSize: 12, color: "#64748b" }}>
-                      4. Learning & insights / सीख:
-                    </strong>
-                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
-                      {base.insights || "No learnings recorded yet."}
-                    </p>
-                  </div>
-
-                  <div>
-                    <strong style={{ fontSize: 12, color: "#64748b" }}>
-                      5. Commitments / संकल्प:
-                    </strong>
-                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
-                      {base.commitments || "No commitments recorded yet."}
-                    </p>
-                  </div>
-
-                  <div>
-                    <strong style={{ fontSize: 12, color: "#64748b" }}>
-                      6. Support needed / सहयोग:
-                    </strong>
-                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
-                      {base.supportNeeded || "No support request recorded."}
-                    </p>
-                  </div>
-
-                  <div>
-                    <strong style={{ fontSize: 12, color: "#64748b" }}>
-                      Mentee Reflection / मेंटी का आत्मचिंतन:
-                    </strong>
-                    <p style={{ margin: "3px 0", fontSize: 13, color: "#0f172a" }}>
-                      {base.postSessionReflectionMentee || "No mentee reflection saved yet."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Optional collaborative editor for mentor */}
-              <details style={{ marginTop: 8 }}>
-                <summary style={{ fontSize: 12, color: "#6366f1", cursor: "pointer" }}>
-                  ✏️ Edit shared session points collaboratively
-                </summary>
-                <div style={{ marginTop: 10 }} className="space-y-3">
-                  <label>
-                    Agenda / चर्चा की योजना
-                    <textarea name="agenda" defaultValue={base.agenda ?? ""} />
-                  </label>
-                  <label>
-                    Discussion Points / चर्चा के मुख्य बिंदु
-                    <textarea
-                      name="discussionPoints"
-                      defaultValue={base.discussionPoints ?? ""}
-                    />
-                  </label>
-                  <label>
-                    Insights / सीख
-                    <textarea name="insights" defaultValue={base.insights ?? ""} />
-                  </label>
-                  <label>
-                    Commitments / संकल्प
-                    <textarea name="commitments" defaultValue={base.commitments ?? ""} />
-                  </label>
-                </div>
-              </details>
-            </div>
-          )}
+            <button
+              type="submit"
+              style={{
+                backgroundColor: "#4f46e5",
+                color: "#fff",
+                fontWeight: 700,
+                padding: "8px 18px",
+                borderRadius: 8,
+              }}
+            >
+              💾 Save Preparation & Answers / उत्तर सहेजें
+            </button>
+          </div>
         </section>
 
         {/* ========================================================================= */}
