@@ -10,6 +10,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { getDiscDetails, getHarmonyAdvice } from "@/lib/disc-guide";
+import { ProgressRing } from "@/components/progress-ring";
+import { CollapsibleCard } from "@/components/collapsible-card";
 
 type Person = {
   employeeCode: string;
@@ -1112,33 +1114,32 @@ export default function MentoringSpace() {
   const completedSessionsCount = pair.sessions.filter(
     (s) => s.status === "COMPLETED",
   ).length;
+  const progressPct = Math.round((completedSessionsCount / 12) * 100);
 
   return (
     <main className="coach">
-      <header>
-        <div>
-          <Link href="/dashboard">← Dashboard</Link>
-          <h1>
-            {pair.mentee.name} & {pair.mentor.name}
-          </h1>
-          <p className="muted">{pair.mentee.designation} · Mentoring record</p>
+      <section className="resume-card">
+        <ProgressRing
+          percent={progressPct}
+          size={72}
+          stroke={8}
+          label={`${completedSessionsCount} of 12 weeks completed`}
+        />
+        <div className="resume-text">
+          <span className="resume-kicker">
+            {pair.status} · 12-Week Mentoring Space
+          </span>
+          <strong>
+            {pair.mentee.name} &amp; {pair.mentor.name}
+          </strong>
+          <span>
+            {pair.mentee.designation} ({pair.mentee.department}) ·{" "}
+            {completedSessionsCount} of 12 weeks completed
+          </span>
         </div>
-        <span className="pill">{pair.status}</span>
-      </header>
-
-      <div className={"notice " + (pair.isOffRecord ? "warning" : "")}>
-        <strong>
-          {pair.isOffRecord
-            ? "Off record / ऑफ द रिकॉर्ड"
-            : "On record / रिकॉर्ड चालू"}
-        </strong>
-        <p>
-          {pair.isOffRecord
-            ? "Saving and new AI requests are paused. Continue your conversation outside the app. Both participants must agree to resume. Earlier saved records remain visible."
-            : "Everything saved here is visible to both participants and the administrators. English and Hindi are welcome. Meeting notes, recordings, and transcriptions are saved inside the portal."}
-        </p>
         {participant && !ended && (
           <button
+            type="button"
             className={pair.isOffRecord ? "secondary" : "danger"}
             disabled={busy}
             onClick={() => {
@@ -1157,17 +1158,25 @@ export default function MentoringSpace() {
             }}
           >
             {pair.isOffRecord
-              ? "Agree to resume recording / सहमति दें"
+              ? "Resume recording / सहमति दें"
               : "Go off record / रिकॉर्ड रोकें"}
           </button>
         )}
-        {pair.isOffRecord && (
+      </section>
+
+      {pair.isOffRecord && (
+        <div className="notice warning">
+          <strong>Off record / ऑफ द रिकॉर्ड</strong>
+          <p>
+            Saving and new AI requests are paused. Continue your conversation
+            outside the app. Both participants must agree to resume.
+          </p>
           <p className="muted">
             Resume agreement: Mentor {pair.resumeMentor ? "✓" : "pending"} ·
             Mentee {pair.resumeMentee ? "✓" : "pending"}
           </p>
-        )}
-      </div>
+        </div>
+      )}
 
       {error && (
         <p role="alert" className="notice error">
@@ -1181,19 +1190,26 @@ export default function MentoringSpace() {
       )}
 
       {/* Shared Goals Section */}
-      <section className="card">
-        <h2>Shared growth goals / साझा विकास लक्ष्य</h2>
+      <CollapsibleCard
+        title="Shared growth goals / साझा विकास लक्ष्य"
+        summary={pair.sharedGoals ? "Goals recorded" : "Add outcomes & review date"}
+        defaultOpen={!pair.sharedGoals}
+      >
         <pre>
           {pair.sharedGoals ||
             "Agree on specific outcomes, evidence of progress and a review date."}
         </pre>
         <form
+          className="form"
           onChange={() => dirty.current.add("/goals")}
           onSubmit={(e) =>
             void simpleSubmit(e, "/goals", "PUT", { version: pair.version })
           }
         >
-          <fieldset disabled={blocked}>
+          <fieldset
+            disabled={blocked}
+            style={{ border: 0, padding: 0, margin: 0 }}
+          >
             <label>
               Add or revise the goals
               <textarea
@@ -1203,17 +1219,20 @@ export default function MentoringSpace() {
                 maxLength={20000}
               />
             </label>
-            <button>Save goals</button>
+            <div style={{ marginTop: "0.75rem" }}>
+              <button>Save goals</button>
+            </div>
           </fieldset>
         </form>
-      </section>
+      </CollapsibleCard>
 
       {/* Main Navigation Tabs */}
-      <nav>
+      <div className="report-tabs" role="tablist" aria-label="Space views">
         {["Session", "Actions", "Journey"].map((t) => (
           <button
             key={t}
-            className={tab === t ? "" : "secondary"}
+            type="button"
+            className={`tab-button${tab === t ? " active" : ""}`}
             aria-pressed={tab === t}
             onClick={() => {
               setTab(t);
@@ -1230,22 +1249,38 @@ export default function MentoringSpace() {
             {t}
           </button>
         ))}
-      </nav>
-
-      {/* 12-Week Roadmap Bar */}
-      <div className="weeknav" aria-label="Programme weeks">
-        {Array.from({ length: 12 }, (_, i) => i + 1).map((w) => (
-          <button key={w} aria-pressed={week === w} onClick={() => setWeek(w)}>
-            Week {w}
-            {pair.sessions.find((s) => s.weekNumber === w)?.status ===
-            "COMPLETED"
-              ? " ✓"
-              : ""}
-          </button>
-        ))}
       </div>
 
-      <p className="muted">
+      {/* 12-Week Roadmap Bar */}
+      <div className="module-tab-list" role="tablist" aria-label="Programme weeks">
+        {Array.from({ length: 12 }, (_, i) => i + 1).map((w) => {
+          const isDone =
+            pair.sessions.find((s) => s.weekNumber === w)?.status ===
+            "COMPLETED";
+          return (
+            <button
+              key={w}
+              type="button"
+              role="tab"
+              aria-selected={week === w}
+              className={`module-tab${
+                week === w ? " module-tab-active" : ""
+              }`}
+              onClick={() => setWeek(w)}
+            >
+              Week {w}
+              {isDone && (
+                <span className="module-tab-status" aria-label="completed">
+                  {" "}
+                  ✓
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="muted" style={{ marginBottom: "0.75rem" }}>
         Week {week} · {themes[week] || `Week ${week}`} ·{" "}
         {completedSessionsCount}/12 completed
       </p>

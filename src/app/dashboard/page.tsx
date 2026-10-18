@@ -1,23 +1,31 @@
 "use client";
+
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { DailyQuote } from "@/components/DailyQuote";
+import {
+  AdminHero,
+  StatTile,
+  coverFor,
+  initialsOf,
+  toneAt,
+} from "@/components/admin-ui";
+import { ProgressRing } from "@/components/progress-ring";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import {
   Users,
   Sparkles,
   BookOpen,
   CheckCircle2,
   ArrowRight,
-  Search,
   Plus,
-  AlertCircle,
   TrendingUp,
-  LogOut,
   UserCheck,
   Briefcase,
-  Layers,
+  LayoutDashboard,
+  PlayCircle,
+  FolderArchive,
   X,
 } from "lucide-react";
 
@@ -51,7 +59,13 @@ type Pair = {
     weekNumber: number;
     status: string;
     scheduledTime?: string | null;
-    actionItems?: Array<{ id: string; title: string; dueDate: string; status: string; employeeCode: string }>;
+    actionItems?: Array<{
+      id: string;
+      title: string;
+      dueDate: string;
+      status: string;
+      employeeCode: string;
+    }>;
   }>;
   surveys: Array<{ growthRating: number }>;
   isOffRecord: boolean;
@@ -62,7 +76,12 @@ type Data = {
   allEmployees?: Employee[];
   allSurveys?: Array<{ growthRating: number }>;
   legacyNotes?: Array<{ id: string; employeeCode: string; content: string }>;
-  actionItems?: Array<{ id: string; title: string; dueDate: string; status?: string }>;
+  actionItems?: Array<{
+    id: string;
+    title: string;
+    dueDate: string;
+    status?: string;
+  }>;
 };
 
 type MatchSuggestion = {
@@ -81,7 +100,7 @@ type MatchSuggestion = {
 type AdminTab = "matching" | "relationships" | "roster" | "journals";
 
 export default function Dashboard() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -90,8 +109,9 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<AdminTab>("matching");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [rosterRoleFilter, setRosterRoleFilter] = useState<string>("ALL");
-  const [showAddEmployee, setShowAddEmployee] = useState(false);
-  const [suggestions, setSuggestions] = useState<MatchSuggestion[] | null>(null);
+  const [suggestions, setSuggestions] = useState<MatchSuggestion[] | null>(
+    null,
+  );
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [detailModal, setDetailModal] = useState<{
     type:
@@ -125,26 +145,37 @@ export default function Dashboard() {
     try {
       const res = await fetch("/api/admin/match");
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Could not calculate compatibility recommendations.");
+      if (!res.ok)
+        throw new Error(
+          json.error || "Could not calculate compatibility recommendations.",
+        );
       if (json.suggestions && json.suggestions.length > 0) {
         setSuggestions(json.suggestions);
-        setMessage(`Prepared ${json.suggestions.length} compatibility recommendation(s) from shared interests, development needs, availability and communication preferences.`);
+        setMessage(
+          `Prepared ${json.suggestions.length} compatibility recommendation(s) from shared interests, development needs, availability and communication preferences.`,
+        );
       } else {
         setSuggestions([]);
         setMessage(
           json.totalMenteesAvailable === 0
             ? "All active mentees already have active or proposed mentoring relationships."
-            : "No active mentors with available capacity found for remaining mentees."
+            : "No active mentors with available capacity found for remaining mentees.",
         );
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to prepare recommendations.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to prepare recommendations.",
+      );
     } finally {
       setLoadingSuggestions(false);
     }
   }
 
-  async function applySuggestedMatches(pairings?: Array<{ mentorCode: string; menteeCode: string }>) {
+  async function applySuggestedMatches(
+    pairings?: Array<{ mentorCode: string; menteeCode: string }>,
+  ) {
     setBusy(true);
     setError("");
     setMessage("");
@@ -158,9 +189,13 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(json.error || "Failed to create pairings.");
       setSuggestions(null);
       await load();
-      setMessage(json.message || "Draft pairings created for administrator review.");
+      setMessage(
+        json.message || "Draft pairings created for administrator review.",
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create pairings.");
+      setError(
+        err instanceof Error ? err.message : "Failed to create pairings.",
+      );
     } finally {
       setBusy(false);
     }
@@ -199,19 +234,11 @@ export default function Dashboard() {
       )
     ) {
       form.reset();
-      setShowAddEmployee(false);
     }
   }
 
   if (loading || !user) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-        <div className="flex items-center gap-3 bg-white px-6 py-4 rounded-2xl shadow-sm border border-slate-200">
-          <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-sm font-semibold text-slate-700">Checking sign-in...</span>
-        </div>
-      </div>
-    );
+    return <main className="container">Checking sign-in…</main>;
   }
 
   const admin = user.role === "ADMIN";
@@ -219,1633 +246,1527 @@ export default function Dashboard() {
   const pairs = data?.pairs ?? [];
   const legacyNotes = data?.legacyNotes ?? [];
 
-  // Filter pairs
   const filteredPairs = pairs.filter((p) => {
-    const matchesSearch = (p.mentee.name + " " + p.mentor.name + " " + p.status)
+    const matchesSearch = (
+      p.mentee.name +
+      " " +
+      p.mentor.name +
+      " " +
+      p.status
+    )
       .toLowerCase()
       .includes(search.toLowerCase());
     const matchesStatus = statusFilter === "ALL" || p.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  // Filter roster
   const filteredRoster = roster.filter((e) => {
-    const matchesSearch = (e.name + " " + e.email + " " + e.employeeCode + " " + e.department + " " + e.designation)
+    const matchesSearch = (
+      e.name +
+      " " +
+      e.email +
+      " " +
+      e.employeeCode +
+      " " +
+      e.department +
+      " " +
+      e.designation
+    )
       .toLowerCase()
       .includes(search.toLowerCase());
-    const matchesRole = rosterRoleFilter === "ALL" || e.role === rosterRoleFilter;
+    const matchesRole =
+      rosterRoleFilter === "ALL" || e.role === rosterRoleFilter;
     return matchesSearch && matchesRole;
   });
 
   const surveys = data?.allSurveys ?? pairs.flatMap((p) => p.surveys);
   const rating = surveys.length
-    ? (surveys.reduce((sum, s) => sum + s.growthRating, 0) / surveys.length).toFixed(1)
+    ? (
+        surveys.reduce((sum, s) => sum + s.growthRating, 0) / surveys.length
+      ).toFixed(1)
     : "—";
 
   const activePairsCount = pairs.filter((p) => p.status === "ACTIVE").length;
-  const proposedPairsCount = pairs.filter((p) => ["PROPOSED", "PENDING_ACCEPTANCE"].includes(p.status)).length;
+  const proposedPairsCount = pairs.filter((p) =>
+    ["PROPOSED", "PENDING_ACCEPTANCE"].includes(p.status),
+  ).length;
   const completedSessionsCount = pairs.reduce(
     (n, p) => n + p.sessions.filter((s) => s.status === "COMPLETED").length,
     0,
   );
-  const openPairs = pairs.filter((p) => ["PROPOSED", "PENDING_ACCEPTANCE", "ACTIVE"].includes(p.status));
+  const openPairs = pairs.filter((p) =>
+    ["PROPOSED", "PENDING_ACCEPTANCE", "ACTIVE"].includes(p.status),
+  );
   const pairedMentees = new Set(openPairs.map((p) => p.mentee.employeeCode));
-  const incompleteProfiles = roster.filter((employee) =>
-    employee.role !== "ADMIN" &&
-    (!employee.careerGoals || !employee.topics?.length || !employee.availability || !employee.discStyle),
+  const incompleteProfiles = roster.filter(
+    (employee) =>
+      employee.role !== "ADMIN" &&
+      (!employee.careerGoals ||
+        !employee.topics?.length ||
+        !employee.availability ||
+        !employee.discStyle),
   );
-  const unpairedMentees = roster.filter((employee) => employee.role === "MENTEE" && !pairedMentees.has(employee.employeeCode));
-  const overdueActions = pairs.flatMap((pair) => pair.sessions.flatMap((session) => session.actionItems ?? []))
-    .filter((action) => action.status !== "COMPLETED" && new Date(action.dueDate) < new Date());
-  const unscheduledRelationships = pairs.filter((pair) =>
-    pair.status === "ACTIVE" && !pair.sessions.some((session) => session.status !== "COMPLETED" && session.scheduledTime),
+  const unpairedMentees = roster.filter(
+    (employee) =>
+      employee.role === "MENTEE" && !pairedMentees.has(employee.employeeCode),
   );
-  const reviewsOutstanding = pairs.filter((pair) => pair.status === "ACTIVE" && pair.surveys.length === 0);
+  const overdueActions = pairs
+    .flatMap((pair) =>
+      pair.sessions.flatMap((session) => session.actionItems ?? []),
+    )
+    .filter(
+      (action) =>
+        action.status !== "COMPLETED" && new Date(action.dueDate) < new Date(),
+    );
+  const unscheduledRelationships = pairs.filter(
+    (pair) =>
+      pair.status === "ACTIVE" &&
+      !pair.sessions.some(
+        (session) => session.status !== "COMPLETED" && session.scheduledTime,
+      ),
+  );
+  const reviewsOutstanding = pairs.filter(
+    (pair) => pair.status === "ACTIVE" && pair.surveys.length === 0,
+  );
   const currentPair = !admin ? openPairs[0] ?? pairs[0] : undefined;
-  const nextSession = currentPair?.sessions.find((session) => session.status !== "COMPLETED");
+  const nextSession = currentPair?.sessions.find(
+    (session) => session.status !== "COMPLETED",
+  );
   const nextAction = data?.actionItems?.[0];
+  const currentCompletedCount = currentPair
+    ? currentPair.sessions.filter((s) => s.status === "COMPLETED").length
+    : 0;
+  const currentPercent = currentPair
+    ? Math.round((currentCompletedCount / 12) * 100)
+    : 0;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-20">
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-indigo-200">
-              <Layers className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-extrabold tracking-widest text-indigo-600 uppercase">
-                  RDC Concrete
-                </span>
-                <span className="text-slate-300">·</span>
-                <span className="text-xs font-semibold text-slate-500">Grow Together</span>
-              </div>
-              <h1 className="text-lg font-extrabold text-slate-900 tracking-tight">Margdarshan</h1>
-            </div>
-          </div>
+    <main className="container">
+      <AdminHero
+        icon={LayoutDashboard}
+        title={admin ? "Administration" : `Hello, ${user.name.split(/\s+/)[0]}`}
+        subtitle={
+          admin
+            ? "Manage mentoring relationships, compatibility matching, employee roster, and programme progress."
+            : "Prepare, meet, agree practical site actions, and track your 12-week mentoring journey."
+        }
+      >
+        <div className="hero-meta">
+          <Link className="button hero-button" href="/onboarding">
+            My profile
+          </Link>
+          <Link className="button secondary" href="/resources">
+            Resource hub
+          </Link>
+        </div>
+      </AdminHero>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex flex-col text-right">
-              <span className="text-sm font-bold text-slate-800">{user.name}</span>
-              <span className="text-xs text-slate-500 font-medium">
-                {admin ? "System Administrator" : user.role}
-              </span>
-            </div>
+      {error && (
+        <div
+          className="message error-box"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <p>{error}</p>
+          <button
+            type="button"
+            className="secondary"
+            style={{ padding: "0.3rem 0.6rem" }}
+            onClick={() => setError("")}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
-            <nav className="flex items-center gap-2">
-              <Link
-                href="/onboarding"
-                className="text-xs font-semibold text-slate-700 hover:text-indigo-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg transition"
-              >
-                My Profile
-              </Link>
-              <Link
-                href="/resources"
-                className="text-xs font-semibold text-slate-700 hover:text-indigo-600 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-lg transition"
-              >
-                Resource Hub
-              </Link>
+      {message && (
+        <div
+          className="message"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <p>{message}</p>
+          <button
+            type="button"
+            className="secondary"
+            style={{ padding: "0.3rem 0.6rem" }}
+            onClick={() => setMessage("")}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Headline Coloured Stat Tiles (LMS style) */}
+      <div className="stat-grid">
+        <StatTile
+          icon={Users}
+          value={activePairsCount}
+          label={admin ? "Active coaching pairs · View" : "Active coaching pairs"}
+          tone={toneAt(0)}
+          onClick={
+            admin
+              ? () =>
+                  setDetailModal({
+                    type: "active_pairs",
+                    title: "Active Coaching Pairs",
+                  })
+              : undefined
+          }
+        />
+        <StatTile
+          icon={CheckCircle2}
+          value={completedSessionsCount}
+          label={admin ? "Completed sessions · View" : "Completed sessions"}
+          tone={toneAt(1)}
+          onClick={
+            admin
+              ? () =>
+                  setDetailModal({
+                    type: "completed_calls",
+                    title: "Completed Mentoring Calls",
+                  })
+              : undefined
+          }
+        />
+        <StatTile
+          icon={TrendingUp}
+          value={`${rating}${surveys.length ? " / 5" : ""}`}
+          label={`Growth rating (${surveys.length} reviews)`}
+          tone={toneAt(2)}
+          onClick={
+            admin
+              ? () =>
+                  setDetailModal({
+                    type: "reviews",
+                    title: "Growth Reviews & Ratings",
+                  })
+              : undefined
+          }
+        />
+        <StatTile
+          icon={Briefcase}
+          value={admin ? roster.length : (data?.actionItems?.length ?? 0)}
+          label={admin ? "Registered employee roster" : "Open action items"}
+          tone={toneAt(3)}
+          onClick={admin ? () => setActiveTab("roster") : undefined}
+        />
+      </div>
+
+      {/* Attention Queue (Admin) or Resume Banner (Mentor/Mentee) */}
+      {admin ? (
+        <section className="card">
+          <h2>Needs attention</h2>
+          <p className="muted">
+            Exceptions that may stop a mentoring relationship from moving
+            forward. Click any tile to inspect details.
+          </p>
+          <div className="stat-chips">
+            {[
+              {
+                label: "Incomplete profiles",
+                value: incompleteProfiles.length,
+                type: "incomplete" as const,
+              },
+              {
+                label: "Unpaired mentees",
+                value: unpairedMentees.length,
+                type: "unpaired" as const,
+              },
+              {
+                label: "Awaiting approval",
+                value: proposedPairsCount,
+                type: "proposed" as const,
+              },
+              {
+                label: "No next meeting",
+                value: unscheduledRelationships.length,
+                type: "unscheduled" as const,
+              },
+              {
+                label: "Overdue actions",
+                value: overdueActions.length,
+                type: "overdue" as const,
+              },
+            ].map((item) => (
               <button
-                onClick={() => void logout()}
-                className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                title="Sign out"
+                key={item.label}
+                type="button"
+                onClick={() =>
+                  setDetailModal({ type: item.type, title: item.label })
+                }
+                className={`stat-chip${
+                  item.value > 0 ? " stat-chip-alert" : ""
+                }`}
               >
-                <LogOut className="w-4 h-4" />
+                <strong>{item.value}</strong>
+                <span>{item.label} →</span>
               </button>
-            </nav>
+            ))}
           </div>
-        </div>
-      </header>
-
-      {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
-        {/* Banner / Hero Card */}
-        <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-800">
-          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-            <div className="lg:col-span-7 space-y-3">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
-                <Sparkles className="w-3.5 h-3.5" />
-                {admin ? "Administrator Control Center" : "Mentoring Journey"}
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-                Build your next chapter
-              </h2>
-              <p className="text-slate-300 text-sm leading-relaxed max-w-2xl">
-                Learn from the people around you. Put new skills into practice. Keep a verified record of the progress you make together.
-              </p>
-              <p className="text-indigo-200 text-xs font-medium italic" lang="hi">
-                साथ सीखें। आगे बढ़ें। अपनी प्रगति को सहेजें।
-              </p>
-            </div>
-
-            <div className="lg:col-span-5 relative hidden sm:block">
-              <div className="relative w-full h-44 rounded-2xl overflow-hidden border border-white/10 shadow-lg group">
-                <Image
-                  src="/images/main-page.png"
-                  alt="RDC Concrete mentor and mentee engineer with transit mixer truck"
-                  fill
-                  sizes="(max-width: 768px) 100vw, 40vw"
-                  className="object-cover group-hover:scale-105 transition-transform duration-500"
-                  priority
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
-                <div className="absolute bottom-2 left-3 right-3 text-[11px] text-slate-200 font-medium truncate">
-                  RDC Concrete · Learning together at site
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Global Feedback Messages */}
-        {error && (
-          <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl flex items-center justify-between text-sm shadow-xs animate-in fade-in">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-              <span>{error}</span>
-            </div>
-            <button onClick={() => setError("")} className="text-rose-500 hover:text-rose-800 p-1">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {message && (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center justify-between text-sm shadow-xs animate-in fade-in">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-              <span>{message}</span>
-            </div>
-            <button onClick={() => setMessage("")} className="text-emerald-500 hover:text-emerald-800 p-1">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {admin ? (
-          <section className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div>
-                <h2 className="text-lg font-extrabold text-slate-900">Needs attention</h2>
-                <p className="text-xs text-slate-500">Start with the exceptions that may stop a mentoring relationship from moving forward.</p>
-              </div>
-              <AlertCircle className="w-5 h-5 text-amber-500" />
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              {[
-                { label: "Incomplete profiles", value: incompleteProfiles.length, type: "incomplete" as const },
-                { label: "Unpaired mentees", value: unpairedMentees.length, type: "unpaired" as const },
-                { label: "Awaiting approval", value: proposedPairsCount, type: "proposed" as const },
-                { label: "No next meeting", value: unscheduledRelationships.length, type: "unscheduled" as const },
-                { label: "Overdue actions", value: overdueActions.length, type: "overdue" as const },
-              ].map((item) => (
-                <button
-                  key={item.label}
-                  onClick={() => setDetailModal({ type: item.type, title: item.label })}
-                  className="record text-left hover:border-indigo-400 hover:shadow-md transition cursor-pointer"
-                  style={{ margin: 0 }}
-                >
-                  <span className={`text-2xl font-black ${item.value ? "text-amber-600" : "text-emerald-600"}`}>
-                    {item.value}
-                  </span>
-                  <span className="block text-xs font-semibold text-slate-600">{item.label}</span>
-                  <span className="block text-[10px] text-indigo-600 font-bold mt-1">View details →</span>
-                </button>
-              ))}
-            </div>
+          {reviewsOutstanding.length > 0 && (
             <button
-              onClick={() => setDetailModal({ type: "reviews", title: "Outstanding Growth Reviews" })}
-              className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold mt-3 block text-left cursor-pointer"
-            >
-              {reviewsOutstanding.length} active relationship(s) have no saved review yet. Click to view outstanding reviews →
-            </button>
-          </section>
-        ) : (
-          <section className="bg-white p-5 sm:p-6 rounded-2xl border border-indigo-200 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-600">Your next step</span>
-                {!currentPair ? (
-                  <><h2 className="text-lg font-extrabold mt-1">Complete your learning profile</h2><p className="text-sm text-slate-600">A clear goal and availability help the administrator prepare a useful match.</p></>
-                ) : (
-                  <><h2 className="text-lg font-extrabold mt-1">{nextSession ? `Prepare for Week ${nextSession.weekNumber}` : "Reflect on the completed journey"}</h2><p className="text-sm text-slate-600">{nextAction ? `Action due: ${nextAction.title}` : currentPair.sharedGoals || "Open the relationship and agree one practical action."}</p></>
-                )}
-              </div>
-              <Link href={currentPair ? `/space/${currentPair.id}` : "/onboarding"} className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">
-                {currentPair ? (nextSession ? "Prepare / Reflect" : "Open journey") : "Finish profile"}<ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-            {currentPair && <div className="grid sm:grid-cols-3 gap-3 mt-5 pt-4 border-t border-slate-100 text-xs"><p><strong>Partner:</strong> {user.role === "MENTOR" ? currentPair.mentee.name : currentPair.mentor.name}</p><p><strong>Next session:</strong> {nextSession ? `Week ${nextSession.weekNumber}` : "Journey complete"}</p><p><strong>Open actions:</strong> {data?.actionItems?.length ?? 0}</p></div>}
-          </section>
-        )}
-
-        {/* Key Metrics Overview Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <button
-            onClick={() => {
-              if (admin) setDetailModal({ type: "active_pairs", title: "Active Coaching Pairs" });
-            }}
-            className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4 text-left transition ${
-              admin ? "hover:border-indigo-300 hover:shadow-md cursor-pointer" : ""
-            }`}
-          >
-            <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-              <Users className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-2xl font-black text-slate-900">{activePairsCount}</p>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Active Pairs</p>
-              {admin && <span className="text-[10px] text-indigo-600 font-bold">View details →</span>}
-            </div>
-          </button>
-
-          <button
-            onClick={() => {
-              if (admin) setDetailModal({ type: "completed_calls", title: "Completed Mentoring Calls" });
-            }}
-            className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4 text-left transition ${
-              admin ? "hover:border-emerald-300 hover:shadow-md cursor-pointer" : ""
-            }`}
-          >
-            <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-2xl font-black text-slate-900">{completedSessionsCount}</p>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Completed Calls</p>
-              {admin && <span className="text-[10px] text-emerald-600 font-bold">View details →</span>}
-            </div>
-          </button>
-
-          <button
-            onClick={() => {
-              if (admin) setDetailModal({ type: "reviews", title: "Growth Reviews & Ratings" });
-            }}
-            className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4 text-left transition ${
-              admin ? "hover:border-amber-300 hover:shadow-md cursor-pointer" : ""
-            }`}
-          >
-            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-2xl font-black text-slate-900">{rating}{surveys.length ? " / 5" : ""}</p>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Growth · {surveys.length} reviews
-              </p>
-              {admin && <span className="text-[10px] text-amber-600 font-bold">View details →</span>}
-            </div>
-          </button>
-
-          <button
-            onClick={() => {
-              if (admin) {
-                setActiveTab("roster");
+              type="button"
+              className="link-button"
+              onClick={() =>
+                setDetailModal({
+                  type: "reviews",
+                  title: "Outstanding Growth Reviews",
+                })
               }
-            }}
-            className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4 text-left transition ${
-              admin ? "hover:border-blue-300 hover:shadow-md cursor-pointer" : ""
-            }`}
-          >
-            <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <Briefcase className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-2xl font-black text-slate-900">{admin ? roster.length : (data?.actionItems?.length ?? 0)}</p>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{admin ? "Registered Roster" : "Open Actions"}</p>
-              {admin && <span className="text-[10px] text-blue-600 font-bold">Open roster →</span>}
-            </div>
-          </button>
-        </div>
+            >
+              {reviewsOutstanding.length} active relationship(s) have no saved
+              review yet →
+            </button>
+          )}
+        </section>
+      ) : (
+        <Link
+          className="resume-card"
+          href={currentPair ? `/space/${currentPair.id}` : "/onboarding"}
+        >
+          <ProgressRing
+            percent={currentPercent}
+            size={76}
+            stroke={8}
+            label={`${currentCompletedCount} of 12 weeks completed`}
+          />
+          <div className="resume-text">
+            <span className="resume-kicker">
+              {!currentPair
+                ? "Setup profile"
+                : nextSession
+                  ? "Continue mentoring"
+                  : "Journey complete"}
+            </span>
+            <strong>
+              {!currentPair
+                ? "Complete your 5-minute mentoring profile"
+                : nextSession
+                  ? `Prepare for Week ${nextSession.weekNumber} with ${
+                      user.role === "MENTOR"
+                        ? currentPair.mentee.name
+                        : currentPair.mentor.name
+                    }`
+                  : "Review your completed 12-week mentoring journey"}
+            </strong>
+            <span>
+              {!currentPair
+                ? "Share your career goals, availability, and DISC style so you can be matched."
+                : nextAction
+                  ? `Next action due: ${nextAction.title}`
+                  : `${currentCompletedCount} of 12 weeks completed · ${
+                      data?.actionItems?.length ?? 0
+                    } open action(s)`}
+            </span>
+          </div>
+          <span className="resume-go">
+            <PlayCircle size={32} aria-hidden="true" />
+            <span className="visually-hidden">Open mentoring space</span>
+          </span>
+        </Link>
+      )}
 
-        {/* Daily Inspiration */}
-        <DailyQuote />
+      <DailyQuote />
 
-        {/* ========================================================================= */}
-        {/* ADMIN DASHBOARD WITH TOP-LEVEL TABS                                       */}
-        {/* ========================================================================= */}
-        {admin ? (
-          <div className="space-y-6">
-            {/* TOP NAVIGATION TABS */}
-            <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs">
-              <nav className="flex flex-wrap gap-2" aria-label="Admin Tabs">
-                <button
-                  onClick={() => setActiveTab("matching")}
-                  className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                    activeTab === "matching"
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-200"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
+      {/* ========================================================================= */}
+      {/* ADMIN DASHBOARD SECTIONS                                                  */}
+      {/* ========================================================================= */}
+      {admin ? (
+        <div>
+          <div className="report-tabs" role="tablist" aria-label="Admin sections">
+            <button
+              type="button"
+              className={`tab-button${
+                activeTab === "matching" ? " active" : ""
+              }`}
+              onClick={() => setActiveTab("matching")}
+            >
+              <Sparkles size={16} />
+              <span>Matching &amp; Invitations</span>
+              {proposedPairsCount > 0 && (
+                <span className="badge">{proposedPairsCount}</span>
+              )}
+            </button>
+            <button
+              type="button"
+              className={`tab-button${
+                activeTab === "relationships" ? " active" : ""
+              }`}
+              onClick={() => setActiveTab("relationships")}
+            >
+              <Users size={16} />
+              <span>Coaching Relationships ({pairs.length})</span>
+            </button>
+            <button
+              type="button"
+              className={`tab-button${activeTab === "roster" ? " active" : ""}`}
+              onClick={() => setActiveTab("roster")}
+            >
+              <UserCheck size={16} />
+              <span>Employee Roster ({roster.length})</span>
+            </button>
+            <button
+              type="button"
+              className={`tab-button${
+                activeTab === "journals" ? " active" : ""
+              }`}
+              onClick={() => setActiveTab("journals")}
+            >
+              <BookOpen size={16} />
+              <span>Earlier Journals ({legacyNotes.length})</span>
+            </button>
+          </div>
+
+          {/* TAB 1: MATCHING & INVITATIONS */}
+          {activeTab === "matching" && (
+            <div className="form">
+              <section className="card">
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "1rem",
+                    marginBottom: "1rem",
+                  }}
                 >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Matching &amp; Invitations</span>
-                  {proposedPairsCount > 0 && (
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                        activeTab === "matching"
-                          ? "bg-white text-indigo-700"
-                          : "bg-indigo-100 text-indigo-800"
-                      }`}
-                    >
-                      {proposedPairsCount}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setActiveTab("relationships")}
-                  className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                    activeTab === "relationships"
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-200"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
-                >
-                  <Users className="w-4 h-4" />
-                  <span>All Coaching Relationships</span>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                      activeTab === "relationships"
-                        ? "bg-white text-indigo-700"
-                        : "bg-slate-200 text-slate-700"
-                    }`}
-                  >
-                    {pairs.length}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab("roster")}
-                  className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                    activeTab === "roster"
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-200"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
-                >
-                  <UserCheck className="w-4 h-4" />
-                  <span>Employee Roster</span>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                      activeTab === "roster"
-                        ? "bg-white text-indigo-700"
-                        : "bg-slate-200 text-slate-700"
-                    }`}
-                  >
-                    {roster.length}
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab("journals")}
-                  className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                    activeTab === "journals"
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-200"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
-                >
-                  <BookOpen className="w-4 h-4" />
-                  <span>Earlier Journals</span>
-                  {legacyNotes.length > 0 && (
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                        activeTab === "journals"
-                          ? "bg-white text-indigo-700"
-                          : "bg-slate-200 text-slate-700"
-                      }`}
-                    >
-                      {legacyNotes.length}
-                    </span>
-                  )}
-                </button>
-              </nav>
-            </div>
-
-            {/* TAB 1: MATCHING & INVITATIONS */}
-            {activeTab === "matching" && (
-              <div className="space-y-6 animate-in fade-in duration-300">
-                {/* Compatibility recommendations and draft pairing */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-6">
-                    <div>
-                      <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-indigo-600" />
-                        Compatibility recommendations
-                      </h3>
-                      <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                        Compare shared interests, development needs, availability and communication preferences. Missing profile details reduce the usefulness of a suggestion.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        disabled={loadingSuggestions || busy}
-                        onClick={() => void fetchMatchSuggestions()}
-                        className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
-                      >
-                        <Sparkles className="w-4 h-4" />
-                        <span>{loadingSuggestions ? "Comparing profiles..." : "Preview recommendations"}</span>
-                      </button>
-                    </div>
+                  <div>
+                    <h2>Compatibility recommendations</h2>
+                    <p className="muted" style={{ margin: 0 }}>
+                      Compare shared interests, development needs, availability
+                      and communication preferences.
+                    </p>
                   </div>
-
-                  {/* Recommendation preview */}
-                  {suggestions !== null && (
-                    <div className="bg-gradient-to-r from-indigo-50/70 to-blue-50/70 p-5 rounded-2xl border border-indigo-200/80 space-y-4 animate-in fade-in">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="text-sm font-black text-indigo-950 flex items-center gap-2">
-                            <Sparkles className="w-4 h-4 text-indigo-600" />
-                            Compatibility recommendations ({suggestions.length})
-                          </h4>
-                          <p className="text-xs text-indigo-800/80 mt-0.5">
-                            Review the reasons before creating drafts. The administrator approves drafts before participants accept them.
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setSuggestions(null)}
-                          className="text-xs text-slate-500 hover:text-slate-800 p-1"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {suggestions.length === 0 ? (
-                        <div className="p-4 bg-white/80 rounded-xl border border-indigo-100 text-xs text-indigo-900 text-center">
-                          No new unmatched candidates available or mentors have reached maximum capacity.
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {suggestions.map((s, idx) => (
-                              <div
-                                key={idx}
-                                className="bg-white p-4 rounded-xl border border-indigo-100 shadow-xs space-y-3"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                    {(s.matchScore * 100).toFixed(0)}% Compatibility
-                                  </span>
-                                  <span className="text-[11px] font-bold text-slate-400">
-                                    DISC: {s.mentor.discStyle || "—"} ↔ {s.mentee.discStyle || "—"}
-                                  </span>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                  <div className="p-2.5 bg-slate-50 rounded-lg">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Mentee</span>
-                                    <p className="font-bold text-slate-900">{s.mentee.name}</p>
-                                    <p className="text-[11px] text-slate-500">{s.mentee.department}</p>
-                                    {s.mentee.location && (
-                                      <p className="text-[10px] text-indigo-600">📍 {s.mentee.location}</p>
-                                    )}
-                                  </div>
-                                  <div className="p-2.5 bg-slate-50 rounded-lg">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Mentor</span>
-                                    <p className="font-bold text-slate-900">{s.mentor.name}</p>
-                                    <p className="text-[11px] text-slate-500">{s.mentor.department}</p>
-                                    {s.mentor.location && (
-                                      <p className="text-[10px] text-indigo-600">📍 {s.mentor.location}</p>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div className="text-[11px] space-y-1 bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100">
-                                  <span className="font-bold text-indigo-950 block">Why this may work:</span>
-                                  {s.reasons.map((r, rIdx) => (
-                                    <p key={rIdx} className="text-indigo-800 flex items-center gap-1.5">
-                                      <span className="text-indigo-500">•</span> {r}
-                                    </p>
-                                  ))}
-                                </div>
-
-                                <div className="flex justify-end pt-1">
-                                  <button
-                                    disabled={busy}
-                                    onClick={() =>
-                                      void applySuggestedMatches([
-                                        { mentorCode: s.mentor.employeeCode, menteeCode: s.mentee.employeeCode },
-                                      ])
-                                    }
-                                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-50"
-                                  >
-                                    Create draft &rarr;
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="flex justify-end gap-3 pt-2">
-                            <button
-                              disabled={busy}
-                              onClick={() => void applySuggestedMatches()}
-                              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>Create all draft pairings ({suggestions.length})</span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Manual Pair Creator */}
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void send("/api/admin/pair", {
-                        ...Object.fromEntries(new FormData(e.currentTarget)),
-                        action: "CREATE_PAIR",
-                      });
-                    }}
-                    className="space-y-4"
-                  >
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                      Create Manual Pairing Invitation
-                    </h4>
-                    <fieldset disabled={busy} className="space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                            Mentee *
-                          </label>
-                          <select
-                            name="menteeCode"
-                            required
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                          >
-                            <option value="">Choose Mentee...</option>
-                            {roster
-                              .filter((e) => e.role === "MENTEE")
-                              .map((e) => (
-                                <option key={e.employeeCode} value={e.employeeCode}>
-                                  {e.name} (#{e.employeeCode}) · {e.department}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                            Mentor *
-                          </label>
-                          <select
-                            name="mentorCode"
-                            required
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                          >
-                            <option value="">Choose Mentor...</option>
-                            {roster
-                              .filter((e) => e.role === "MENTOR")
-                              .map((e) => (
-                                <option key={e.employeeCode} value={e.employeeCode}>
-                                  {e.name} (#{e.employeeCode}) · Cap: {e.mentorCapacity}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-end">
-                        <button
-                          type="submit"
-                          className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>Create Invitation</span>
-                        </button>
-                      </div>
-                    </fieldset>
-                  </form>
-                </div>
-
-                {/* Pending / Proposed Matches */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-700">
-                      Pending Invitations ({pairs.filter((p) => p.status !== "ACTIVE").length})
-                    </h3>
-                  </div>
-
-                  {pairs.filter((p) => p.status !== "ACTIVE").length === 0 ? (
-                    <div className="text-center py-10 border border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
-                      No pending proposals. All pairings are currently active or confirmed.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {pairs
-                        .filter((p) => p.status !== "ACTIVE")
-                        .map((p) => (
-                          <div
-                            key={p.id}
-                            className="p-5 rounded-2xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:shadow-md transition space-y-3"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
-                                {p.status}
-                              </span>
-                              <Link
-                                href={"/space/" + p.id}
-                                className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1"
-                              >
-                                View Space <ArrowRight className="w-3.5 h-3.5" />
-                              </Link>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              <div>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase block">Mentee</span>
-                                <span className="font-bold text-slate-900">{p.mentee.name}</span>
-                                <span className="block text-[11px] text-slate-500 font-mono">#{p.mentee.employeeCode}</span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase block">Mentor</span>
-                                <span className="font-bold text-slate-900">{p.mentor.name}</span>
-                                <span className="block text-[11px] text-slate-500 font-mono">#{p.mentor.employeeCode}</span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* TAB 2: ALL COACHING RELATIONSHIPS */}
-            {activeTab === "relationships" && (
-              <div className="space-y-6 animate-in fade-in duration-300">
-                {/* Search & Filter Bar */}
-                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="relative w-full sm:w-80">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="search"
-                      placeholder="Search mentor, mentee, or role..."
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-                    {["ALL", "ACTIVE", "PROPOSED", "COMPLETED", "TERMINATED"].map((st) => (
-                      <button
-                        key={st}
-                        onClick={() => setStatusFilter(st)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-                          statusFilter === st
-                            ? "bg-slate-900 text-white"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        }`}
-                      >
-                        {st}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Relationship Cards Grid */}
-                {filteredPairs.length === 0 ? (
-                  <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
-                    <Users className="w-10 h-10 text-slate-300 mx-auto" />
-                    <p className="text-sm font-bold text-slate-700">No coaching relationships found</p>
-                    <p className="text-xs text-slate-400">Try adjusting your search terms or filters above.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {filteredPairs.map((p) => {
-                      const completedCount = p.sessions.filter((s) => s.status === "COMPLETED").length;
-                      const progressPct = Math.min(100, Math.round((completedCount / 12) * 100));
-
-                      return (
-                        <div
-                          key={p.id}
-                          className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs hover:shadow-lg hover:border-indigo-200 transition-all duration-300 flex flex-col justify-between space-y-4"
-                        >
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span
-                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                                  p.status === "ACTIVE"
-                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                    : p.status === "PROPOSED"
-                                    ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                    : "bg-slate-100 text-slate-700 border border-slate-200"
-                                }`}
-                              >
-                                ● {p.status}
-                                {p.isOffRecord ? " · OFF RECORD" : ""}
-                              </span>
-
-                              <span className="text-[11px] font-bold text-slate-500">
-                                {completedCount} of 12 completed ({progressPct}%)
-                              </span>
-                            </div>
-
-                            {/* Mentee & Mentor Box */}
-                            <div className="space-y-2 pt-1">
-                              <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0">
-                                  {p.mentee.name.charAt(0)}
-                                </div>
-                                <div className="truncate">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Mentee</span>
-                                  <p className="text-sm font-bold text-slate-900 truncate">{p.mentee.name}</p>
-                                  <p className="text-[11px] text-slate-500 truncate">{p.mentee.department}</p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-3 pt-1 border-t border-slate-100">
-                                <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-black text-xs shrink-0">
-                                  {p.mentor.name.charAt(0)}
-                                </div>
-                                <div className="truncate">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Mentor</span>
-                                  <p className="text-sm font-bold text-slate-900 truncate">{p.mentor.name}</p>
-                                  <p className="text-[11px] text-slate-500 truncate">{p.mentor.department}</p>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* 12-Week Visual Progress Bar */}
-                            <div className="space-y-1.5 pt-2">
-                              <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                                <span>12-Week Roadmap</span>
-                                <span>{progressPct}%</span>
-                              </div>
-                              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                                <div
-                                  className="bg-indigo-600 h-full rounded-full transition-all duration-500"
-                                  style={{ width: `${Math.max(progressPct, completedCount > 0 ? 8 : 0)}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="space-y-2 pt-2 border-t border-slate-100">
-                            <Link
-                              href={"/space/" + p.id}
-                              className="w-full bg-slate-900 hover:bg-indigo-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-                            >
-                              <span>Open 12-Week Space</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </Link>
-
-                            {!["TERMINATED", "DECLINED"].includes(p.status) && (
-                              <button
-                                disabled={busy}
-                                onClick={() => {
-                                  const reason = window.prompt(
-                                    "Reason for ending this relationship. All records will be retained.",
-                                  );
-                                  if (reason !== null)
-                                    void send("/api/admin/pair", {
-                                      action: "TERMINATE_PAIR",
-                                      pairId: p.id,
-                                      reason,
-                                    });
-                                }}
-                                className="w-full py-1.5 text-slate-400 hover:text-rose-600 text-[11px] font-semibold transition cursor-pointer"
-                              >
-                                End Relationship
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB 3: EMPLOYEE ROSTER */}
-            {activeTab === "roster" && (
-              <div className="space-y-6 animate-in fade-in duration-300">
-                {/* Roster Controls */}
-                <div className="bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                    <div className="relative w-full sm:w-72">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="search"
-                        placeholder="Search employee, email, code..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      {["ALL", "MENTEE", "MENTOR"].map((r) => (
-                        <button
-                          key={r}
-                          onClick={() => setRosterRoleFilter(r)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                            rosterRoleFilter === r
-                              ? "bg-slate-900 text-white"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          }`}
-                        >
-                          {r === "ALL" ? "All" : r === "MENTEE" ? "Mentees" : "Mentors"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
                   <button
-                    onClick={() => setShowAddEmployee(!showAddEmployee)}
-                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer w-full sm:w-auto justify-center"
+                    type="button"
+                    disabled={loadingSuggestions || busy}
+                    onClick={() => void fetchMatchSuggestions()}
                   >
-                    <Plus className="w-4 h-4" />
-                    <span>{showAddEmployee ? "Close Form" : "Add Employee"}</span>
+                    <Sparkles size={16} />
+                    <span>
+                      {loadingSuggestions
+                        ? "Comparing profiles…"
+                        : "Preview recommendations"}
+                    </span>
                   </button>
                 </div>
 
-                {/* Add / Update Employee Drawer */}
-                {showAddEmployee && (
-                  <div className="bg-white rounded-3xl p-6 sm:p-8 border border-indigo-100 shadow-md space-y-4 animate-in fade-in">
-                    <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                      <Plus className="w-4 h-4 text-indigo-600" />
-                      Register or Update Employee Profile
-                    </h3>
-                    <form onSubmit={candidate} className="space-y-4">
-                      <fieldset disabled={busy} className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">Employee Code *</label>
-                            <input
-                              name="employeeCode"
-                              required
-                              maxLength={100}
-                              placeholder="e.g. EMP401"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            />
-                          </div>
+                {suggestions !== null && (
+                  <div className="record" style={{ marginTop: "1rem" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "0.75rem",
+                      }}
+                    >
+                      <h3 style={{ margin: 0 }}>
+                        Suggested Pairings ({suggestions.length})
+                      </h3>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => setSuggestions(null)}
+                        style={{ padding: "0.35rem 0.7rem" }}
+                      >
+                        Close
+                      </button>
+                    </div>
 
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
-                            <input
-                              name="name"
-                              required
-                              maxLength={200}
-                              placeholder="e.g. Rajesh Kumar"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">RDC Email *</label>
-                            <input
-                              name="email"
-                              type="email"
-                              required
-                              placeholder="name@rdc.in"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">Role *</label>
-                            <select
-                              name="role"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            >
-                              <option value="MENTEE">Mentee</option>
-                              <option value="MENTOR">Mentor</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">Department</label>
-                            <input
-                              name="department"
-                              defaultValue="Engineering"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">Designation</label>
-                            <input
-                              name="designation"
-                              defaultValue="Graduate Engineer Trainee"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">Highest Qualification</label>
-                            <input
-                              name="highestQualification"
-                              placeholder="e.g. B.Tech Civil, M.Tech, B.E."
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">Location / Plant Site</label>
-                            <input
-                              name="location"
-                              placeholder="e.g. Turbhe Plant, Mumbai / Pune"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">Mentor Capacity</label>
-                            <input
-                              type="number"
-                              name="mentorCapacity"
-                              min="1"
-                              max="50"
-                              defaultValue="2"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            />
-                          </div>
+                    {suggestions.length === 0 ? (
+                      <p className="muted">
+                        No new unmatched candidates available or mentors have
+                        reached maximum capacity.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="tile-grid">
+                          {suggestions.map((s, idx) => (
+                            <div key={idx} className="card" style={{ margin: 0 }}>
+                              <div className="badge-row">
+                                <span className="status-pill status-completed">
+                                  {(s.matchScore * 100).toFixed(0)}% Match
+                                </span>
+                                <span className="badge">
+                                  DISC: {s.mentor.discStyle || "—"} ↔{" "}
+                                  {s.mentee.discStyle || "—"}
+                                </span>
+                              </div>
+                              <div className="form-row" style={{ margin: "0.6rem 0" }}>
+                                <div>
+                                  <small className="muted">Mentee</small>
+                                  <div>
+                                    <strong>{s.mentee.name}</strong>
+                                  </div>
+                                  <div className="muted">{s.mentee.department}</div>
+                                </div>
+                                <div>
+                                  <small className="muted">Mentor</small>
+                                  <div>
+                                    <strong>{s.mentor.name}</strong>
+                                  </div>
+                                  <div className="muted">{s.mentor.department}</div>
+                                </div>
+                              </div>
+                              <ul className="requirement-list">
+                                {s.reasons.map((r, rIdx) => (
+                                  <li key={rIdx}>{r}</li>
+                                ))}
+                              </ul>
+                              <div style={{ marginTop: "0.85rem" }}>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void applySuggestedMatches([
+                                      {
+                                        mentorCode: s.mentor.employeeCode,
+                                        menteeCode: s.mentee.employeeCode,
+                                      },
+                                    ])
+                                  }
+                                >
+                                  Create draft →
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-
-                        <div className="flex justify-end gap-2">
+                        <div style={{ marginTop: "1rem" }}>
                           <button
                             type="button"
-                            onClick={() => setShowAddEmployee(false)}
-                            className="px-4 py-2 border border-slate-300 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50 cursor-pointer"
+                            disabled={busy}
+                            onClick={() => void applySuggestedMatches()}
                           >
-                            Cancel
-                          </button>
-                          <button
-                            type="submit"
-                            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
-                          >
-                            Save Employee Record
+                            <CheckCircle2 size={16} />
+                            <span>
+                              Create all draft pairings ({suggestions.length})
+                            </span>
                           </button>
                         </div>
-                      </fieldset>
-                    </form>
+                      </>
+                    )}
                   </div>
                 )}
 
-                {/* Modern Roster Table */}
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                          <th className="py-3.5 px-6">Employee</th>
-                          <th className="py-3.5 px-6">Role &amp; DISC</th>
-                          <th className="py-3.5 px-6">Department &amp; Designation</th>
-                          <th className="py-3.5 px-6">Qualification &amp; Location</th>
-                          <th className="py-3.5 px-6">Capacity</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                        {filteredRoster.map((e) => (
-                          <tr key={e.employeeCode} className="hover:bg-slate-50/80 transition">
-                            <td className="py-3.5 px-6">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 font-bold flex items-center justify-center text-xs">
-                                  {e.name.charAt(0)}
-                                </div>
-                                <div>
-                                  <p className="font-bold text-slate-900">{e.name}</p>
-                                  <p className="text-[11px] text-slate-400">{e.email} &bull; #{e.employeeCode}</p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-3.5 px-6">
-                              <div className="flex flex-col gap-1 items-start">
-                                <span
-                                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                                    e.role === "MENTOR"
-                                      ? "bg-purple-50 text-purple-700 border border-purple-200"
-                                      : e.role === "ADMIN"
-                                      ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
-                                      : "bg-blue-50 text-blue-700 border border-blue-200"
-                                  }`}
-                                >
-                                  {e.role}
-                                </span>
-                                {e.discStyle && (
-                                  <span className="px-2 py-0.2 rounded text-[10px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200">
-                                    DISC: {e.discStyle}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-3.5 px-6">
-                              <p className="font-medium text-slate-800">{e.designation}</p>
-                              <p className="text-[11px] text-slate-400">{e.department}</p>
-                            </td>
-                            <td className="py-3.5 px-6">
-                              <p className="font-medium text-slate-800">{e.highestQualification || "—"}</p>
-                              <p className="text-[11px] text-slate-500">{e.location ? `📍 ${e.location}` : "—"}</p>
-                            </td>
-                            <td className="py-3.5 px-6 font-semibold">
-                              {e.role === "MENTOR" ? `${e.mentorCapacity} Mentees` : "—"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 4: EARLIER JOURNALS */}
-            {activeTab === "journals" && (
-              <div className="space-y-6 animate-in fade-in duration-300">
-                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                    <div>
-                      <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                        <BookOpen className="w-5 h-5 text-indigo-600" />
-                        Earlier Journals (Unlinked Historical Records)
-                      </h3>
-                      <p className="text-xs text-slate-500 mt-1">
-                        These notes predate journals being linked to an active 12-week mentoring relationship.
-                      </p>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void send("/api/admin/pair", {
+                      ...Object.fromEntries(new FormData(e.currentTarget)),
+                      action: "CREATE_PAIR",
+                    });
+                  }}
+                  className="form"
+                  style={{
+                    marginTop: "1.25rem",
+                    paddingTop: "1.25rem",
+                    borderTop: "1px solid var(--line)",
+                  }}
+                >
+                  <h3>Create manual pairing invitation</h3>
+                  <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0 }}>
+                    <div className="form-row">
+                      <label>
+                        Mentee
+                        <select name="menteeCode" required defaultValue="">
+                          <option value="" disabled>
+                            Choose Mentee…
+                          </option>
+                          {roster
+                            .filter((e) => e.role === "MENTEE")
+                            .map((e) => (
+                              <option key={e.employeeCode} value={e.employeeCode}>
+                                {e.name} (#{e.employeeCode}) · {e.department}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label>
+                        Mentor
+                        <select name="mentorCode" required defaultValue="">
+                          <option value="" disabled>
+                            Choose Mentor…
+                          </option>
+                          {roster
+                            .filter((e) => e.role === "MENTOR")
+                            .map((e) => (
+                              <option key={e.employeeCode} value={e.employeeCode}>
+                                {e.name} (#{e.employeeCode}) · Capacity:{" "}
+                                {e.mentorCapacity}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
                     </div>
-
-                    <Link
-                      href="/admin/records"
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
-                    >
-                      <span>Full Record Library</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-
-                  {legacyNotes.length === 0 ? (
-                    <div className="text-center py-12 text-slate-400 text-xs border border-dashed border-slate-200 rounded-2xl">
-                      No standalone unlinked journals found.
+                    <div style={{ marginTop: "1rem" }}>
+                      <button type="submit">
+                        <Plus size={16} />
+                        <span>Create Invitation</span>
+                      </button>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {legacyNotes.map((n) => {
-                        const author = roster.find((e) => e.employeeCode === n.employeeCode);
+                  </fieldset>
+                </form>
+              </section>
 
-                        return (
-                          <div
-                            key={n.id}
-                            className="bg-slate-50/80 p-5 rounded-2xl border border-slate-200 space-y-2 hover:bg-white hover:shadow-md transition"
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs">
-                                {(author?.name || n.employeeCode).charAt(0)}
-                              </div>
-                              <div>
-                                <p className="text-xs font-bold text-slate-900">{author?.name ?? n.employeeCode}</p>
-                                <p className="text-[10px] text-slate-400 font-mono">#{n.employeeCode}</p>
-                              </div>
-                            </div>
-                            <pre className="text-xs text-slate-700 bg-white p-3 rounded-xl border border-slate-100 whitespace-pre-wrap font-sans leading-relaxed">
-                              {n.content}
-                            </pre>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          /* ========================================================================= */
-          /* MENTEE / MENTOR DASHBOARD VIEW                                            */
-          /* ========================================================================= */
-          <div className="space-y-6">
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
-              <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-600" />
-                My Coaching Relationships ({pairs.length})
-              </h3>
-
-              {pairs.length === 0 ? (
-                <div className="text-center py-12 border border-dashed border-slate-200 rounded-2xl space-y-2">
-                  <Users className="w-10 h-10 text-slate-300 mx-auto" />
-                  <p className="text-sm font-bold text-slate-700">No active relationship assigned yet</p>
-                  <p className="text-xs text-slate-400 max-w-md mx-auto">
-                    The program administrator is currently reviewing cohort compatibility and pairing proposals. You will receive an invitation once matched.
+              <section className="card">
+                <h2>
+                  Pending invitations (
+                  {pairs.filter((p) => p.status !== "ACTIVE").length})
+                </h2>
+                {pairs.filter((p) => p.status !== "ACTIVE").length === 0 ? (
+                  <p className="muted">
+                    No pending proposals. All pairings are currently active or
+                    confirmed.
                   </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {pairs.map((p) => {
-                    const isMeMentee = p.mentee.employeeCode === user.employeeCode;
-                    const partner = isMeMentee ? p.mentor : p.mentee;
-                    const completedCount = p.sessions.filter((s) => s.status === "COMPLETED").length;
-                    const progressPct = Math.min(100, Math.round((completedCount / 12) * 100));
-
-                    return (
-                      <div
-                        key={p.id}
-                        className="bg-gradient-to-b from-white to-slate-50/60 rounded-3xl p-6 border border-slate-200 shadow-sm hover:shadow-md transition space-y-4"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            ● {p.status}
-                          </span>
-                          <span className="text-xs font-bold text-slate-500">{completedCount} of 12 completed ({progressPct}%)</span>
-                        </div>
-
-                        <div className="flex items-center gap-3 pt-1">
-                          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white font-black flex items-center justify-center text-sm shadow-sm">
-                            {partner.name.charAt(0)}
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">
-                              {isMeMentee ? "Your Assigned Mentor" : "Your Assigned Mentee"}
+                ) : (
+                  <div className="tile-grid">
+                    {pairs
+                      .filter((p) => p.status !== "ACTIVE")
+                      .map((p) => (
+                        <div key={p.id} className="record" style={{ margin: 0 }}>
+                          <div className="badge-row">
+                            <span className="status-pill status-proposed">
+                              {p.status}
                             </span>
-                            <p className="text-base font-extrabold text-slate-900">{partner.name}</p>
-                            <p className="text-xs text-slate-500 font-medium">
-                              {partner.designation} · {partner.department}
-                            </p>
-                            {(partner.location || partner.highestQualification || partner.discStyle) && (
-                              <div className="flex flex-wrap gap-1.5 pt-1.5 text-[10px]">
-                                {partner.location && (
-                                  <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
-                                    📍 {partner.location}
-                                  </span>
-                                )}
-                                {partner.highestQualification && (
-                                  <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
-                                    🎓 {partner.highestQualification}
-                                  </span>
-                                )}
-                                {partner.discStyle && (
-                                  <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold border border-indigo-100">
-                                    DISC: {partner.discStyle}
-                                  </span>
-                                )}
-                              </div>
-                            )}
                           </div>
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div className="space-y-1 pt-2">
-                          <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                            <span>Journey Completion</span>
-                            <span>{progressPct}%</span>
-                          </div>
-                          <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
-                            <div
-                              className="bg-indigo-600 h-full rounded-full transition-all duration-500"
-                              style={{ width: `${Math.max(progressPct, completedCount > 0 ? 8 : 0)}%` }}
-                            ></div>
-                          </div>
-                        </div>
-
-                        <div className="pt-2">
+                          <p style={{ margin: "0.4rem 0" }}>
+                            <strong>Mentee:</strong> {p.mentee.name} (#
+                            {p.mentee.employeeCode})
+                            <br />
+                            <strong>Mentor:</strong> {p.mentor.name} (#
+                            {p.mentor.employeeCode})
+                          </p>
                           <Link
                             href={"/space/" + p.id}
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                            className="button secondary"
                           >
-                            <span>Enter 12-Week Coaching Space</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
+                            View Space →
                           </Link>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {/* TAB 2: ALL COACHING RELATIONSHIPS */}
+          {activeTab === "relationships" && (
+            <section className="card">
+              <h2>All coaching relationships</h2>
+              <div className="employee-search">
+                <input
+                  type="search"
+                  placeholder="Search mentor, mentee, or status…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {search && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setSearch("")}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              <div className="chips" role="group" aria-label="Filter by status">
+                {["ALL", "ACTIVE", "PROPOSED", "COMPLETED", "TERMINATED"].map(
+                  (st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      className={`chip${
+                        statusFilter === st ? " chip-active" : ""
+                      }`}
+                      onClick={() => setStatusFilter(st)}
+                    >
+                      {st}
+                    </button>
+                  ),
+                )}
+              </div>
+
+              {filteredPairs.length === 0 ? (
+                <p className="muted">
+                  No coaching relationships match the current filter.
+                </p>
+              ) : (
+                <div className="tile-grid">
+                  {filteredPairs.map((p) => {
+                    const completedCount = p.sessions.filter(
+                      (s) => s.status === "COMPLETED",
+                    ).length;
+                    const progressPct = Math.min(
+                      100,
+                      Math.round((completedCount / 12) * 100),
+                    );
+
+                    return (
+                      <div key={p.id} className="course-tile">
+                        <div
+                          className="tile-cover"
+                          style={{
+                            background: coverFor(
+                              `${p.mentee.name}-${p.mentor.name}`,
+                            ),
+                          }}
+                        >
+                          <span className="tile-category">
+                            {p.status}
+                            {p.isOffRecord ? " · OFF RECORD" : ""}
+                          </span>
+                          <span className="tile-initial" aria-hidden="true">
+                            {p.mentee.name.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="tile-body">
+                          <h3>
+                            {p.mentee.name} &amp; {p.mentor.name}
+                          </h3>
+                          <p className="muted">
+                            Mentee: {p.mentee.department} · Mentor:{" "}
+                            {p.mentor.department}
+                          </p>
+                          <p className="muted">
+                            {completedCount} of 12 weeks completed
+                          </p>
+                          <div className="tile-foot">
+                            <div style={{ display: "flex", gap: "0.4rem" }}>
+                              <Link
+                                className="button"
+                                style={{ padding: "0.45rem 0.85rem", fontSize: "0.82rem" }}
+                                href={"/space/" + p.id}
+                              >
+                                Open Space
+                              </Link>
+                              {!["TERMINATED", "DECLINED"].includes(
+                                p.status,
+                              ) && (
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  style={{ padding: "0.45rem 0.65rem", fontSize: "0.78rem" }}
+                                  disabled={busy}
+                                  onClick={() => {
+                                    const reason = window.prompt(
+                                      "Reason for ending this relationship. All records will be retained.",
+                                    );
+                                    if (reason !== null)
+                                      void send("/api/admin/pair", {
+                                        action: "TERMINATE_PAIR",
+                                        pairId: p.id,
+                                        reason,
+                                      });
+                                  }}
+                                >
+                                  End
+                                </button>
+                              )}
+                            </div>
+                            <ProgressRing
+                              percent={progressPct}
+                              size={44}
+                              stroke={5}
+                            />
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
               )}
+            </section>
+          )}
+
+          {/* TAB 3: EMPLOYEE ROSTER */}
+          {activeTab === "roster" && (
+            <div className="employees-layout">
+              <section className="card">
+                <h2>Employee roster ({filteredRoster.length})</h2>
+                <div className="employee-search">
+                  <input
+                    type="search"
+                    placeholder="Search by name, employee code, e-mail, department or designation…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => setSearch("")}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                <div className="chips" role="group" aria-label="Filter role">
+                  {["ALL", "MENTEE", "MENTOR"].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      className={`chip${
+                        rosterRoleFilter === r ? " chip-active" : ""
+                      }`}
+                      onClick={() => setRosterRoleFilter(r)}
+                    >
+                      {r === "ALL"
+                        ? "All"
+                        : r === "MENTEE"
+                          ? "Mentees"
+                          : "Mentors"}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Employee</th>
+                        <th>Role &amp; DISC</th>
+                        <th>Department &amp; Designation</th>
+                        <th>Qualification &amp; Location</th>
+                        <th>Capacity</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRoster.map((e) => (
+                        <tr key={e.employeeCode}>
+                          <td>
+                            <div className="person">
+                              <span
+                                className="avatar"
+                                style={{ background: coverFor(e.name) }}
+                                aria-hidden="true"
+                              >
+                                {initialsOf(e.name)}
+                              </span>
+                              <div>
+                                <strong>{e.name}</strong>
+                                <br />
+                                <span className="muted">
+                                  {e.employeeCode} · {e.email}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span
+                              className={`status-pill${
+                                e.role === "MENTOR"
+                                  ? " status-completed"
+                                  : " status-in_progress"
+                              }`}
+                            >
+                              {e.role}
+                            </span>
+                            {e.discStyle && (
+                              <>
+                                {" "}
+                                <span className="badge">DISC {e.discStyle}</span>
+                              </>
+                            )}
+                          </td>
+                          <td>
+                            <strong>{e.designation}</strong>
+                            <br />
+                            <span className="muted">{e.department}</span>
+                          </td>
+                          <td>
+                            {e.highestQualification || "—"}
+                            {e.location && (
+                              <>
+                                <br />
+                                <span className="muted">📍 {e.location}</span>
+                              </>
+                            )}
+                          </td>
+                          <td>
+                            {e.role === "MENTOR"
+                              ? `${e.mentorCapacity} mentees`
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                      {!filteredRoster.length && (
+                        <tr>
+                          <td colSpan={5}>
+                            No employees match the current search.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <CollapsibleCard
+                title="Register or update employee"
+                summary="single addition"
+              >
+                <p className="muted">
+                  Add a new Mentor or Mentee or update an existing employee code
+                  in the Margdarshan roster.
+                </p>
+                <form onSubmit={candidate} className="form">
+                  <fieldset
+                    disabled={busy}
+                    style={{ border: 0, padding: 0, margin: 0 }}
+                  >
+                    <div className="form-row">
+                      <label>
+                        Employee code *
+                        <input
+                          name="employeeCode"
+                          required
+                          maxLength={100}
+                          placeholder="e.g. EMP401"
+                        />
+                      </label>
+                      <label>
+                        Full name *
+                        <input
+                          name="name"
+                          required
+                          maxLength={200}
+                          placeholder="e.g. Rajesh Kumar"
+                        />
+                      </label>
+                    </div>
+                    <div className="form-row" style={{ marginTop: "0.75rem" }}>
+                      <label>
+                        RDC Email *
+                        <input
+                          name="email"
+                          type="email"
+                          required
+                          placeholder="name@rdc.in"
+                        />
+                      </label>
+                      <label>
+                        Role *
+                        <select name="role" defaultValue="MENTEE">
+                          <option value="MENTEE">Mentee</option>
+                          <option value="MENTOR">Mentor</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="form-row" style={{ marginTop: "0.75rem" }}>
+                      <label>
+                        Department
+                        <input
+                          name="department"
+                          defaultValue="Engineering"
+                        />
+                      </label>
+                      <label>
+                        Designation
+                        <input
+                          name="designation"
+                          defaultValue="Graduate Engineer Trainee"
+                        />
+                      </label>
+                    </div>
+                    <div className="form-row" style={{ marginTop: "0.75rem" }}>
+                      <label>
+                        Highest qualification
+                        <input
+                          name="highestQualification"
+                          placeholder="e.g. B.Tech Civil, M.Tech"
+                        />
+                      </label>
+                      <label>
+                        Location / Plant site
+                        <input
+                          name="location"
+                          placeholder="e.g. Turbhe Plant, Mumbai"
+                        />
+                      </label>
+                      <label>
+                        Mentor capacity
+                        <input
+                          type="number"
+                          name="mentorCapacity"
+                          min="1"
+                          max="50"
+                          defaultValue="2"
+                        />
+                      </label>
+                    </div>
+                    <div style={{ marginTop: "1rem" }}>
+                      <button type="submit">Save employee record</button>
+                    </div>
+                  </fieldset>
+                </form>
+              </CollapsibleCard>
             </div>
+          )}
 
-            {/* Open Action Items for Mentee/Mentor */}
-            {!!data?.actionItems?.length && (
-              <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4">
-                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  My Open Action Items ({data.actionItems.length})
-                </h3>
-                <div className="divide-y divide-slate-100">
-                  {data.actionItems.map((a) => {
-                    const isOverdue = new Date(a.dueDate) < new Date();
+          {/* TAB 4: EARLIER JOURNALS */}
+          {activeTab === "journals" && (
+            <section className="card">
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "1rem",
+                  marginBottom: "1rem",
+                }}
+              >
+                <div>
+                  <h2>Earlier journals (unlinked historical records)</h2>
+                  <p className="muted" style={{ margin: 0 }}>
+                    Notes that predate journals being linked to an active
+                    12-week mentoring relationship.
+                  </p>
+                </div>
+                <Link className="button secondary" href="/admin/records">
+                  <FolderArchive size={16} />
+                  <span>Full Record Library</span>
+                </Link>
+              </div>
 
+              {legacyNotes.length === 0 ? (
+                <p className="muted">No standalone unlinked journals found.</p>
+              ) : (
+                <div className="grid">
+                  {legacyNotes.map((n) => {
+                    const author = roster.find(
+                      (e) => e.employeeCode === n.employeeCode,
+                    );
                     return (
-                      <div key={a.id} className="py-3 flex items-center justify-between gap-4 text-xs">
-                        <span className="font-semibold text-slate-800">{a.title}</span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-slate-400">
-                            Due{" "}
+                      <article key={n.id} className="record" style={{ margin: 0 }}>
+                        <div className="person" style={{ marginBottom: "0.5rem" }}>
+                          <span
+                            className="avatar"
+                            style={{
+                              background: coverFor(
+                                author?.name || n.employeeCode,
+                              ),
+                            }}
+                          >
+                            {initialsOf(author?.name || n.employeeCode)}
+                          </span>
+                          <div>
+                            <strong>{author?.name ?? n.employeeCode}</strong>
+                            <br />
+                            <span className="muted">#{n.employeeCode}</span>
+                          </div>
+                        </div>
+                        <pre>{n.content}</pre>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+      ) : (
+        /* ========================================================================= */
+        /* MENTEE / MENTOR DASHBOARD VIEW                                            */
+        /* ========================================================================= */
+        <div>
+          <section className="card">
+            <h2>My coaching relationships ({pairs.length})</h2>
+            {pairs.length === 0 ? (
+              <p className="muted">
+                No active relationship assigned yet. The programme administrator
+                is reviewing cohort compatibility and pairing proposals.
+              </p>
+            ) : (
+              <div className="tile-grid">
+                {pairs.map((p) => {
+                  const isMeMentee =
+                    p.mentee.employeeCode === user.employeeCode;
+                  const partner = isMeMentee ? p.mentor : p.mentee;
+                  const completedCount = p.sessions.filter(
+                    (s) => s.status === "COMPLETED",
+                  ).length;
+                  const progressPct = Math.min(
+                    100,
+                    Math.round((completedCount / 12) * 100),
+                  );
+
+                  return (
+                    <Link
+                      key={p.id}
+                      href={"/space/" + p.id}
+                      className="course-tile"
+                    >
+                      <div
+                        className="tile-cover"
+                        style={{ background: coverFor(partner.name) }}
+                      >
+                        <span className="tile-category">
+                          {isMeMentee
+                            ? "Your Assigned Mentor"
+                            : "Your Assigned Mentee"}
+                        </span>
+                        <span className="tile-initial" aria-hidden="true">
+                          {partner.name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="tile-body">
+                        <h3>{partner.name}</h3>
+                        <p className="muted">
+                          {partner.designation} · {partner.department}
+                        </p>
+                        <div className="badge-row" style={{ marginTop: "0.25rem" }}>
+                          {partner.location && (
+                            <span className="badge">📍 {partner.location}</span>
+                          )}
+                          {partner.discStyle && (
+                            <span className="badge">
+                              DISC {partner.discStyle}
+                            </span>
+                          )}
+                        </div>
+                        <div className="tile-foot">
+                          <span
+                            className={`status-pill status-${p.status.toLowerCase()}`}
+                          >
+                            {p.status} · {completedCount}/12 weeks
+                          </span>
+                          <ProgressRing
+                            percent={progressPct}
+                            size={44}
+                            stroke={5}
+                          />
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {!!data?.actionItems?.length && (
+            <section className="card">
+              <h2>My open action items ({data.actionItems.length})</h2>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Due date</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.actionItems.map((a) => {
+                      const isOverdue = new Date(a.dueDate) < new Date();
+                      return (
+                        <tr key={a.id}>
+                          <td>
+                            <strong>{a.title}</strong>
+                          </td>
+                          <td>
                             {new Date(a.dueDate).toLocaleDateString("en-IN", {
                               timeZone: "Asia/Kolkata",
                               day: "numeric",
                               month: "short",
+                              year: "numeric",
                             })}
-                          </span>
-                          {isOverdue && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
-                              OVERDUE
+                          </td>
+                          <td>
+                            <span
+                              className={`status-pill ${
+                                isOverdue
+                                  ? "status-proposed"
+                                  : "status-in_progress"
+                              }`}
+                            >
+                              {isOverdue ? "OVERDUE" : a.status || "OPEN"}
                             </span>
-                          )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* DETAIL DRILLDOWN MODAL FOR ADMIN METRICS & TABS                           */}
+      {/* ========================================================================= */}
+      {detailModal && (
+        <div
+          className="sheet-backdrop"
+          style={{ alignItems: "center", justifyContent: "center", padding: "1rem" }}
+          onClick={() => setDetailModal(null)}
+        >
+          <div
+            className="card"
+            style={{
+              width: "min(760px, 100%)",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              margin: 0,
+            }}
+            role="dialog"
+            aria-label={detailModal.title}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                borderBottom: "1px solid var(--line)",
+                paddingBottom: "0.75rem",
+                marginBottom: "1rem",
+              }}
+            >
+              <div>
+                <h2 style={{ margin: 0 }}>{detailModal.title}</h2>
+                <p className="muted" style={{ margin: 0 }}>
+                  Administrator Detailed Drilldown
+                </p>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Close"
+                onClick={() => setDetailModal(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {detailModal.type === "incomplete" &&
+              (incompleteProfiles.length === 0 ? (
+                <p className="muted">
+                  All active employees have completed career goals,
+                  availability, topics, and DISC.
+                </p>
+              ) : (
+                <div className="form">
+                  {incompleteProfiles.map((emp) => {
+                    const missing = [
+                      !emp.careerGoals && "Career Goals",
+                      (!emp.topics || emp.topics.length === 0) && "Topics",
+                      !emp.availability && "Availability",
+                      !emp.discStyle && "DISC Profile",
+                    ].filter(Boolean);
+
+                    return (
+                      <div key={emp.employeeCode} className="record" style={{ margin: 0 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: "1rem",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <div>
+                            <strong>{emp.name}</strong> ({emp.employeeCode}) ·{" "}
+                            <span className="badge">{emp.role}</span>
+                            <div className="muted">
+                              {emp.designation} · {emp.department}
+                            </div>
+                            <div className="badge-row" style={{ marginTop: "0.35rem" }}>
+                              {missing.map((m) => (
+                                <span
+                                  key={m as string}
+                                  className="status-pill status-proposed"
+                                >
+                                  Missing {m}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => {
+                              setActiveTab("roster");
+                              setSearch(emp.employeeCode);
+                              setDetailModal(null);
+                            }}
+                          >
+                            Inspect in Roster →
+                          </button>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+              ))}
 
-        {/* ========================================================================= */}
-        {/* DETAIL DRILLDOWN MODAL FOR ADMIN METRICS & TABS                           */}
-        {/* ========================================================================= */}
-        {detailModal && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
-              {/* Modal Header */}
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-                    <Layers className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-extrabold text-slate-900">{detailModal.title}</h3>
-                    <p className="text-xs text-slate-500">Administrator Detailed Drilldown</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setDetailModal(null)}
-                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Modal Body */}
-              <div className="p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
-                {detailModal.type === "incomplete" && (
-                  incompleteProfiles.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500">
-                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-                      <p className="font-bold text-slate-800">All profiles are complete!</p>
-                      <p className="text-xs text-slate-400">Every active employee has completed career goals, availability, topics, and DISC.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-xs text-slate-500">The following {incompleteProfiles.length} employee(s) have incomplete profiles:</p>
-                      {incompleteProfiles.map((emp) => {
-                        const missing = [
-                          !emp.careerGoals && "Career Goals",
-                          (!emp.topics || emp.topics.length === 0) && "Topics",
-                          !emp.availability && "Availability",
-                          !emp.discStyle && "DISC Profile",
-                        ].filter(Boolean);
-
-                        return (
-                          <div key={emp.employeeCode} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-extrabold text-slate-900 text-sm">{emp.name}</span>
-                                <span className="text-xs font-mono text-slate-400">({emp.employeeCode})</span>
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-200 text-slate-700">{emp.role}</span>
-                              </div>
-                              <p className="text-xs text-slate-500 mt-0.5">{emp.designation} · {emp.department} · {emp.location || "Location pending"}</p>
-                              <div className="flex flex-wrap gap-1.5 mt-2">
-                                {missing.map((m) => (
-                                  <span key={m as string} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                                    Missing {m}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => {
-                                setActiveTab("roster");
-                                setSearch(emp.employeeCode);
-                                setDetailModal(null);
-                              }}
-                              className="px-3.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
-                            >
-                              Inspect in Roster →
-                            </button>
+            {detailModal.type === "unpaired" &&
+              (unpairedMentees.length === 0 ? (
+                <p className="muted">All mentees are paired!</p>
+              ) : (
+                <div className="form">
+                  {unpairedMentees.map((mentee) => (
+                    <div key={mentee.employeeCode} className="record" style={{ margin: 0 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "1rem",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div>
+                          <strong>{mentee.name}</strong> ({mentee.employeeCode})
+                          <div className="muted">
+                            {mentee.designation} · {mentee.department}
                           </div>
-                        );
-                      })}
-                    </div>
-                  )
-                )}
-
-                {detailModal.type === "unpaired" && (
-                  unpairedMentees.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500">
-                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-                      <p className="font-bold text-slate-800">All mentees are paired!</p>
-                      <p className="text-xs text-slate-400">There are no unpaired mentees awaiting a coaching partner.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-xs text-slate-500">The following {unpairedMentees.length} mentee(s) do not currently have a mentor relationship:</p>
-                      {unpairedMentees.map((mentee) => (
-                        <div key={mentee.employeeCode} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-extrabold text-slate-900 text-sm">{mentee.name}</span>
-                              <span className="text-xs font-mono text-slate-400">({mentee.employeeCode})</span>
-                              {mentee.discStyle && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                  DISC: {mentee.discStyle}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-500 mt-0.5">{mentee.designation} · {mentee.department} · {mentee.location || "Location unassigned"}</p>
-                            {mentee.topics && mentee.topics.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1.5">
-                                {mentee.topics.slice(0, 3).map((t) => (
-                                  <span key={t} className="px-2 py-0.5 rounded text-[10px] bg-slate-200/80 text-slate-700">{t}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => {
-                              setActiveTab("matching");
-                              setDetailModal(null);
-                              void fetchMatchSuggestions();
-                            }}
-                            className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
-                          >
-                            Find Mentor Match →
-                          </button>
                         </div>
-                      ))}
-                    </div>
-                  )
-                )}
-
-                {detailModal.type === "proposed" && (
-                  (() => {
-                    const proposedList = pairs.filter((p) => ["PROPOSED", "PENDING_ACCEPTANCE"].includes(p.status));
-                    return proposedList.length === 0 ? (
-                      <div className="text-center py-8 text-slate-500">
-                        <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-                        <p className="font-bold text-slate-800">No relationships awaiting approval</p>
-                        <p className="text-xs text-slate-400">All pair proposals have been accepted or activated.</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab("matching");
+                            setDetailModal(null);
+                            void fetchMatchSuggestions();
+                          }}
+                        >
+                          Find Mentor Match →
+                        </button>
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <p className="text-xs text-slate-500">{proposedList.length} coaching relationship(s) are pending approval or participant acceptance:</p>
-                        {proposedList.map((p) => (
-                          <div key={p.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-extrabold text-slate-900 text-sm">{p.mentee.name}</span>
-                                <span className="text-xs text-slate-400">with</span>
-                                <span className="font-extrabold text-slate-900 text-sm">{p.mentor.name}</span>
-                              </div>
-                              <p className="text-xs text-slate-500 mt-0.5">
-                                Mentee: {p.mentee.department} · Mentor: {p.mentor.department}
-                              </p>
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">
-                                  ● {p.status}
-                                </span>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => {
-                                setActiveTab("matching");
-                                setDetailModal(null);
-                              }}
-                              className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
-                            >
-                              Review in Matching →
-                            </button>
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+            {detailModal.type === "proposed" &&
+              (() => {
+                const proposedList = pairs.filter((p) =>
+                  ["PROPOSED", "PENDING_ACCEPTANCE"].includes(p.status),
+                );
+                return proposedList.length === 0 ? (
+                  <p className="muted">No relationships awaiting approval.</p>
+                ) : (
+                  <div className="form">
+                    {proposedList.map((p) => (
+                      <div key={p.id} className="record" style={{ margin: 0 }}>
+                        <strong>{p.mentee.name}</strong> with{" "}
+                        <strong>{p.mentor.name}</strong> ·{" "}
+                        <span className="status-pill status-proposed">
+                          {p.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+            {detailModal.type === "unscheduled" &&
+              (unscheduledRelationships.length === 0 ? (
+                <p className="muted">
+                  All active relationships have meetings planned!
+                </p>
+              ) : (
+                <div className="form">
+                  {unscheduledRelationships.map((p) => (
+                    <div key={p.id} className="record" style={{ margin: 0 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "1rem",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div>
+                          <strong>
+                            {p.mentee.name} &amp; {p.mentor.name}
+                          </strong>
+                          <div className="muted">
+                            No upcoming meeting time saved
                           </div>
-                        ))}
+                        </div>
+                        <Link className="button" href={"/space/" + p.id}>
+                          Open Space →
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+            {detailModal.type === "overdue" &&
+              (overdueActions.length === 0 ? (
+                <p className="muted">No overdue action items!</p>
+              ) : (
+                <div className="form">
+                  {overdueActions.map((act) => {
+                    const owner = roster.find(
+                      (e) => e.employeeCode === act.employeeCode,
+                    );
+                    return (
+                      <div key={act.id} className="record" style={{ margin: 0 }}>
+                        <strong>{act.title}</strong>
+                        <div className="muted">
+                          Assigned to: {owner?.name || act.employeeCode} · Due:{" "}
+                          {new Date(act.dueDate).toLocaleDateString("en-IN", {
+                            timeZone: "Asia/Kolkata",
+                          })}
+                        </div>
                       </div>
                     );
-                  })()
-                )}
+                  })}
+                </div>
+              ))}
 
-                {detailModal.type === "unscheduled" && (
-                  unscheduledRelationships.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500">
-                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-                      <p className="font-bold text-slate-800">All active relationships have meetings planned!</p>
-                      <p className="text-xs text-slate-400">No active pair is missing a scheduled upcoming check-in.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-xs text-slate-500">{unscheduledRelationships.length} active pair(s) have no upcoming meeting scheduled in the portal:</p>
-                      {unscheduledRelationships.map((p) => {
-                        const completedCount = p.sessions.filter((s) => s.status === "COMPLETED").length;
-                        return (
-                          <div key={p.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {detailModal.type === "reviews" &&
+              (() => {
+                const allRev =
+                  data?.allSurveys ?? pairs.flatMap((p) => p.surveys);
+                return allRev.length === 0 ? (
+                  <p className="muted">No reviews submitted yet.</p>
+                ) : (
+                  <div className="form">
+                    {allRev.map((rev, idx) => {
+                      const surveyItem = rev as {
+                        employeeCode?: string;
+                        weekNumber?: number;
+                        growthRating: number;
+                        feedbackText?: string;
+                      };
+                      const author = roster.find(
+                        (e) => e.employeeCode === surveyItem.employeeCode,
+                      );
+                      return (
+                        <div key={idx} className="record" style={{ margin: 0 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                            }}
+                          >
+                            <strong>
+                              {author?.name ||
+                                surveyItem.employeeCode ||
+                                "Participant"}
+                            </strong>
+                            <span className="badge">
+                              ★ {surveyItem.growthRating} / 5
+                            </span>
+                          </div>
+                          {surveyItem.feedbackText && (
+                            <p style={{ margin: "0.4rem 0 0" }}>
+                              {surveyItem.feedbackText}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+            {detailModal.type === "active_pairs" &&
+              (() => {
+                const activeList = pairs.filter((p) => p.status === "ACTIVE");
+                return activeList.length === 0 ? (
+                  <p className="muted">No active coaching pairs currently.</p>
+                ) : (
+                  <div className="form">
+                    {activeList.map((p) => {
+                      const completedCount = p.sessions.filter(
+                        (s) => s.status === "COMPLETED",
+                      ).length;
+                      return (
+                        <div key={p.id} className="record" style={{ margin: 0 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                          >
                             <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-extrabold text-slate-900 text-sm">{p.mentee.name}</span>
-                                <span className="text-xs text-slate-400">&</span>
-                                <span className="font-extrabold text-slate-900 text-sm">{p.mentor.name}</span>
+                              <strong>
+                                {p.mentee.name} &amp; {p.mentor.name}
+                              </strong>
+                              <div className="muted">
+                                {completedCount} of 12 weeks completed
                               </div>
-                              <p className="text-xs text-slate-500 mt-0.5">
-                                Progress: {completedCount} of 12 sessions completed
-                              </p>
-                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 mt-1.5">
-                                ⚠️ No upcoming meeting time saved
-                              </span>
                             </div>
-                            <Link
-                              href={"/space/" + p.id}
-                              className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
-                            >
-                              Open Coaching Space →
+                            <Link className="button" href={"/space/" + p.id}>
+                              Open Space →
                             </Link>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )
-                )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
 
-                {detailModal.type === "overdue" && (
-                  overdueActions.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500">
-                      <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-                      <p className="font-bold text-slate-800">No overdue action items!</p>
-                      <p className="text-xs text-slate-400">All coaching commitments across pairs are on schedule.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-xs text-slate-500">{overdueActions.length} action item(s) are past their agreed completion date:</p>
-                      {overdueActions.map((act) => {
-                        const owner = roster.find((e) => e.employeeCode === act.employeeCode);
-                        return (
-                          <div key={act.id} className="p-4 rounded-2xl border border-rose-200 bg-rose-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div>
-                              <p className="font-extrabold text-slate-900 text-sm">{act.title}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">
-                                Assigned to: <strong>{owner?.name || act.employeeCode}</strong> ({owner?.role || "Participant"})
-                              </p>
-                              <div className="flex items-center gap-2 mt-1.5">
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
-                                  Due: {new Date(act.dueDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })} (OVERDUE)
-                                </span>
-                              </div>
+            {detailModal.type === "completed_calls" &&
+              (() => {
+                const completedSessions = pairs.flatMap((p) =>
+                  p.sessions
+                    .filter((s) => s.status === "COMPLETED")
+                    .map((s) => ({ session: s, pair: p })),
+                );
+                return completedSessions.length === 0 ? (
+                  <p className="muted">No completed sessions logged yet.</p>
+                ) : (
+                  <div className="form">
+                    {completedSessions.map(({ session: s, pair: p }) => (
+                      <div key={s.id} className="record" style={{ margin: 0 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div>
+                            <strong>Week {s.weekNumber} Session</strong> ·{" "}
+                            <span className="status-pill status-completed">
+                              ✓ Completed
+                            </span>
+                            <div className="muted">
+                              {p.mentee.name} with {p.mentor.name}
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )
-                )}
-
-                {detailModal.type === "reviews" && (
-                  (() => {
-                    const allRev = data?.allSurveys ?? pairs.flatMap((p) => p.surveys);
-                    return allRev.length === 0 ? (
-                      <div className="text-center py-8 text-slate-500">
-                        <TrendingUp className="w-10 h-10 text-amber-500 mx-auto mb-2" />
-                        <p className="font-bold text-slate-800">No reviews submitted yet</p>
-                        <p className="text-xs text-slate-400">Formal midpoint (Week 6) and closing (Week 12) reviews will appear here once submitted.</p>
+                          <Link
+                            className="button secondary"
+                            href={"/space/" + p.id}
+                          >
+                            Inspect Record →
+                          </Link>
+                        </div>
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <p className="text-xs text-slate-500">{allRev.length} growth review(s) recorded across cohorts:</p>
-                        {allRev.map((rev, idx) => {
-                          const surveyItem = rev as any;
-                          const author = roster.find((e) => e.employeeCode === surveyItem.employeeCode);
-                          return (
-                            <div key={idx} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-1.5">
-                              <div className="flex items-center justify-between">
-                                <span className="font-extrabold text-slate-900 text-sm">
-                                  {author?.name || surveyItem.employeeCode || "Participant"}
-                                </span>
-                                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-50 text-amber-700 border border-amber-200">
-                                  ★ {surveyItem.growthRating} / 5
-                                </span>
-                              </div>
-                              <p className="text-xs text-slate-500">
-                                {surveyItem.weekNumber ? `Week ${surveyItem.weekNumber} Milestone Review` : "Growth Review"}
-                              </p>
-                              {surveyItem.feedbackText && (
-                                <p className="text-xs text-slate-700 bg-white p-3 rounded-xl border border-slate-100 whitespace-pre-wrap leading-relaxed mt-2">
-                                  {surveyItem.feedbackText}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()
-                )}
-
-                {detailModal.type === "active_pairs" && (
-                  (() => {
-                    const activeList = pairs.filter((p) => p.status === "ACTIVE");
-                    return activeList.length === 0 ? (
-                      <div className="text-center py-8 text-slate-500">
-                        <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                        <p className="font-bold text-slate-800">No active coaching pairs currently</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <p className="text-xs text-slate-500">{activeList.length} active mentoring relationship(s) in progress:</p>
-                        {activeList.map((p) => {
-                          const completedCount = p.sessions.filter((s) => s.status === "COMPLETED").length;
-                          const progressPct = Math.min(100, Math.round((completedCount / 12) * 100));
-                          return (
-                            <div key={p.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-extrabold text-slate-900 text-sm">{p.mentee.name}</span>
-                                  <span className="text-xs text-slate-400">&</span>
-                                  <span className="font-extrabold text-slate-900 text-sm">{p.mentor.name}</span>
-                                </div>
-                                <p className="text-xs text-slate-500">
-                                  Mentee: {p.mentee.department} · Mentor: {p.mentor.department}
-                                </p>
-                                <div className="flex items-center gap-2 pt-1">
-                                  <div className="w-32 bg-slate-200 h-2 rounded-full overflow-hidden">
-                                    <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${Math.max(progressPct, completedCount > 0 ? 8 : 0)}%` }}></div>
-                                  </div>
-                                  <span className="text-[11px] font-bold text-slate-600">{completedCount}/12 weeks ({progressPct}%)</span>
-                                </div>
-                              </div>
-                              <Link
-                                href={"/space/" + p.id}
-                                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
-                              >
-                                Open Space →
-                              </Link>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()
-                )}
-
-                {detailModal.type === "completed_calls" && (
-                  (() => {
-                    const completedSessions = pairs.flatMap((p) =>
-                      p.sessions
-                        .filter((s) => s.status === "COMPLETED")
-                        .map((s) => ({ session: s, pair: p })),
-                    );
-                    return completedSessions.length === 0 ? (
-                      <div className="text-center py-8 text-slate-500">
-                        <CheckCircle2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                        <p className="font-bold text-slate-800">No completed sessions logged yet</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <p className="text-xs text-slate-500">{completedSessions.length} mentoring session(s) marked completed:</p>
-                        {completedSessions.map(({ session: s, pair: p }) => (
-                          <div key={s.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-slate-900 text-sm">Week {s.weekNumber} Session</span>
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  ✓ Completed
-                                </span>
-                              </div>
-                              <p className="text-xs text-slate-500 mt-0.5">
-                                {p.mentee.name} (Mentee) with {p.mentor.name} (Mentor)
-                              </p>
-                              {s.scheduledTime && (
-                                <p className="text-[11px] text-slate-400 mt-1">
-                                  Time: {new Date(s.scheduledTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })} IST
-                                </p>
-                              )}
-                            </div>
-                            <Link
-                              href={"/space/" + p.id}
-                              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs shrink-0 self-start sm:self-auto cursor-pointer"
-                            >
-                              Inspect Record →
-                            </Link>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()
-                )}
-              </div>
-
-              {/* Modal Footer */}
-              <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex justify-end">
-                <button
-                  onClick={() => setDetailModal(null)}
-                  className="px-5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold transition cursor-pointer"
-                >
-                  Close Drilldown
-                </button>
-              </div>
-            </div>
+                    ))}
+                  </div>
+                );
+              })()}
           </div>
-        )}
-      </main>
-    </div>
+        </div>
+      )}
+    </main>
   );
 }

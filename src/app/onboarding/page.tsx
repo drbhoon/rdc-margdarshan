@@ -1,9 +1,14 @@
 "use client";
+
 import { useState, type FormEvent } from "react";
-import Link from "next/link";
+import { UserCircle } from "lucide-react";
 import { useAuth, type User } from "@/context/AuthContext";
 import { COMPETENCIES } from "@/lib/competencies";
 import { getDiscDetails } from "@/lib/disc-guide";
+import { AdminHero } from "@/components/admin-ui";
+import { ProgressRing } from "@/components/progress-ring";
+import { CollapsibleCard } from "@/components/collapsible-card";
+
 const DISC_QUESTIONS = [
   {
     id: 1,
@@ -124,14 +129,20 @@ function ProfileForm({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
+
   const setupSteps = [
-    { label: "Goal or challenge", done: Boolean(user.careerGoals || user.challenges.length) },
+    {
+      label: "Goal or challenge",
+      done: Boolean(user.careerGoals || user.challenges.length),
+    },
     { label: "Development topics", done: user.topics.length > 0 },
     { label: "Availability", done: Boolean(user.availability) },
     { label: "Communication preference", done: Boolean(user.commStyleNotes) },
     { label: "DISC reflection", done: Boolean(user.discStyle) },
   ];
   const completedSteps = setupSteps.filter((step) => step.done).length;
+  const setupPercent = Math.round((completedSteps / setupSteps.length) * 100);
+
   async function submit(e: FormEvent<HTMLFormElement>, assessment = false) {
     e.preventDefault();
     const values = new FormData(e.currentTarget);
@@ -146,7 +157,9 @@ function ProfileForm({
         }
       : {
           careerGoals: String(values.get("careerGoals") ?? ""),
-          highestQualification: String(values.get("highestQualification") ?? ""),
+          highestQualification: String(
+            values.get("highestQualification") ?? "",
+          ),
           location: String(values.get("location") ?? ""),
           topics: values.getAll("topics"),
           challenges: String(values.get("challenges") ?? "")
@@ -181,41 +194,60 @@ function ProfileForm({
 
   return (
     <>
-      <section className="card">
-        <h2>5-minute setup · {completedSteps}/{setupSteps.length} complete</h2>
-        <p className="muted">A useful match needs only a goal, a few interests and a simple way to meet.</p>
-        <div className="grid">
-          {setupSteps.map((step) => (
-            <div className="record" key={step.label} style={{ padding: 10 }}>
-              {step.done ? "✓" : "○"} {step.label}
-            </div>
-          ))}
+      <section className="resume-card">
+        <ProgressRing
+          percent={setupPercent}
+          size={72}
+          stroke={8}
+          label={`${completedSteps} of ${setupSteps.length} profile steps complete`}
+        />
+        <div className="resume-text">
+          <span className="resume-kicker">5-minute setup</span>
+          <strong>
+            {completedSteps}/{setupSteps.length} profile steps complete
+          </strong>
+          <span>
+            {setupSteps
+              .map((step) => `${step.done ? "✓" : "○"} ${step.label}`)
+              .join(" · ")}
+          </span>
         </div>
-        <p className="muted">Qualification and location add context but are optional for the proof of concept.</p>
       </section>
+
       <section className="card">
+        <div className="badge-row">
+          <span className="badge">{user.role}</span>
+          <span className="badge">#{user.employeeCode}</span>
+          <span className="badge">{user.department}</span>
+        </div>
         <h2>{user.name}</h2>
-        <p>
-          {user.email} · {user.role} · {user.employeeCode} · {user.designation} ({user.department})
+        <p className="muted">
+          {user.email} · {user.designation}
         </p>
-        <p className="notice">
+        <p className="message">
           Your saved profile is available to programme administrators and your
           mentoring counterpart. Share only what you want recorded. English and
           Hindi are accepted.
         </p>
+
         {error && (
-          <p role="alert" className="notice error">
+          <p role="alert" className="message error-box">
             {error}
           </p>
         )}
         {message && (
-          <p role="status" className="notice">
+          <p role="status" className="message">
             {message}
           </p>
         )}
-        <form onSubmit={(e) => void submit(e)}>
-          <fieldset disabled={busy}>
-            <div className="grid">
+
+        <form onSubmit={(e) => void submit(e)} className="form">
+          <fieldset
+            disabled={busy}
+            className="form"
+            style={{ border: 0, padding: 0, margin: 0 }}
+          >
+            <div className="form-row">
               <label>
                 Highest Qualification / उच्चतम योग्यता
                 <input
@@ -243,175 +275,191 @@ function ProfileForm({
                 placeholder="What are your key career aspirations and growth targets over the next 1-3 years?"
               />
             </label>
-            <fieldset>
+
+            <fieldset className="feedback-question">
               <legend>Competencies to develop or share / कौशल</legend>
-              {COMPETENCIES.map((topic) => (
-                <label
-                  key={topic}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    fontWeight: 400,
-                  }}
-                >
-                  <input
-                    style={{ width: 18, margin: 0 }}
-                    type="checkbox"
-                    name="topics"
-                    value={topic}
-                    defaultChecked={user.topics.includes(topic)}
-                  />
-                  {topic}
-                </label>
-              ))}
+              <div className="grid">
+                {COMPETENCIES.map((topic) => (
+                  <label key={topic} className="checkbox">
+                    <input
+                      type="checkbox"
+                      name="topics"
+                      value={topic}
+                      defaultChecked={user.topics.includes(topic)}
+                    />
+                    <span>{topic}</span>
+                  </label>
+                ))}
+              </div>
             </fieldset>
+
             <label>
               Development priorities (one per line) / विकास की प्राथमिकताएँ
               <textarea
                 name="challenges"
                 defaultValue={user.challenges.join("\n")}
                 maxLength={5000}
-                placeholder="e.g. Plant telemetry calibration&#10;Dispatch turnaround optimization&#10;Assertive communication"
+                placeholder={
+                  "e.g. Plant telemetry calibration\nDispatch turnaround optimization\nAssertive communication"
+                }
               />
             </label>
-            <label>
-              Availability / उपलब्धता
+
+            <div className="form-row">
+              <label>
+                Availability / उपलब्धता
+                <input
+                  name="availability"
+                  defaultValue={user.availability ?? ""}
+                  placeholder="e.g. Tuesdays & Thursdays, 4:00 PM - 5:30 PM"
+                />
+              </label>
+              <label>
+                How I prefer to communicate / संवाद की पसंद
+                <input
+                  name="commStyleNotes"
+                  defaultValue={user.commStyleNotes ?? ""}
+                  placeholder="e.g. Direct and action-focused / Step-by-step with written notes"
+                />
+              </label>
+            </div>
+
+            <label className="checkbox">
               <input
-                name="availability"
-                defaultValue={user.availability ?? ""}
-                placeholder="e.g. Tuesdays &amp; Thursdays, 4:00 PM - 5:30 PM"
-              />
-            </label>
-            <label>
-              How I prefer to communicate / संवाद की पसंद
-              <textarea
-                name="commStyleNotes"
-                defaultValue={user.commStyleNotes ?? ""}
-                placeholder="e.g. Direct and action-focused / Step-by-step with written notes"
-              />
-            </label>
-            <label style={{ display: "flex", gap: 10 }}>
-              <input
-                style={{ width: 18 }}
                 name="consent"
                 type="checkbox"
                 required
                 defaultChecked={user.isConsentShared}
               />
-              I understand who can see my saved profile.
+              <span>I understand who can see my saved profile.</span>
             </label>
-            <button>Save profile</button>
+
+            <div>
+              <button type="submit">Save profile</button>
+            </div>
           </fieldset>
         </form>
       </section>
 
       <section className="card">
         <h2>DISC communication reflection</h2>
-        <p className="muted">A short conversation starter, not a psychometric diagnosis or performance evaluation.</p>
-        <div style={{ backgroundColor: "#f8fafc", padding: 16, borderRadius: 8, margin: "12px 0", border: "1px solid #e2e8f0" }}>
-          <h3 style={{ margin: "0 0 6px 0", fontSize: 14 }}>Understanding the DISC Framework at RDC Concrete:</h3>
-          <p style={{ fontSize: 12, color: "#475569", margin: 0, lineHeight: 1.6 }}>
-            DISC explains behavioral styles in workplace and site situations:
-            <br />
-            &bull; <strong>D (Dominance)</strong>: Direct, decisive, driven by results and overcoming challenges.
-            <br />
-            &bull; <strong>I (Influence)</strong>: Outgoing, persuasive, energized by teamwork and relationship building.
-            <br />
-            &bull; <strong>S (Steadiness)</strong>: Patient, loyal, methodical, values stability and team harmony.
-            <br />
-            &bull; <strong>C (Conscientiousness)</strong>: Analytical, precise, quality-focused, values data and standards.
-          </p>
+        <p className="muted">
+          A short conversation starter, not a psychometric diagnosis or
+          performance evaluation.
+        </p>
+
+        <div className="record">
+          <h3>Understanding the DISC Framework at RDC Concrete</h3>
+          <ul className="requirement-list">
+            <li>
+              <strong>D (Dominance)</strong>: Direct, decisive, driven by
+              results and overcoming challenges.
+            </li>
+            <li>
+              <strong>I (Influence)</strong>: Outgoing, persuasive, energized by
+              teamwork and relationship building.
+            </li>
+            <li>
+              <strong>S (Steadiness)</strong>: Patient, loyal, methodical,
+              values stability and team harmony.
+            </li>
+            <li>
+              <strong>C (Conscientiousness)</strong>: Analytical, precise,
+              quality-focused, values data and standards.
+            </li>
+          </ul>
         </div>
 
         {user.discStyle ? (
-          <div className="record" style={{ backgroundColor: "#f0fdf4", borderColor: "#bbf7d0", margin: "16px 0" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 11, fontWeight: "bold", color: "#166534", textTransform: "uppercase" }}>
-                Your Recorded Reflection
+          <div className="record">
+            <div className="badge-row">
+              <span className="status-pill status-completed">
+                Recorded Style: {user.discStyle}
               </span>
-              <span style={{ fontSize: 12, fontWeight: "bold", padding: "3px 10px", borderRadius: 6, backgroundColor: "#dcfce7", color: "#166534" }}>
-                Style: {user.discStyle}
+              <span className="badge" lang="hi">
+                {userDisc.hindiName}
               </span>
             </div>
-            <h3 style={{ margin: "8px 0 2px 0", color: "#14532d" }}>{userDisc.name}</h3>
-            <p className="muted" style={{ fontSize: 12, margin: "0 0 10px 0" }}>
-              <span lang="hi">{userDisc.hindiName}</span> &bull; {userDisc.tagline}
+            <h3>{userDisc.name}</h3>
+            <p className="muted">{userDisc.tagline}</p>
+            <p>{userDisc.overview}</p>
+            <p>
+              <strong>Preferred Communication Style:</strong>{" "}
+              {userDisc.communicationStyle}
             </p>
-            <p style={{ fontSize: 13, color: "#1e293b", margin: "0 0 10px 0" }}>{userDisc.overview}</p>
-            
-            <div style={{ fontSize: 12, color: "#334155", display: "grid", gap: 8 }}>
-              <div>
-                <strong>Site &amp; Operations Strengths:</strong>
-                <ul style={{ margin: "4px 0 0 0", paddingLeft: 20 }}>
-                  {userDisc.strengths.map((s, idx) => (
-                    <li key={idx}>{s}</li>
-                  ))}
-                </ul>
-              </div>
-              <div style={{ marginTop: 4 }}>
-                <strong>Preferred Communication Style:</strong>
-                <p style={{ margin: "2px 0 0 0", color: "#475569" }}>{userDisc.communicationStyle}</p>
-              </div>
-              <div style={{ marginTop: 4 }}>
-                <strong>Mentoring Dynamic ({user.role === "MENTOR" ? "As a Mentor" : "As a Mentee"}):</strong>
-                <p style={{ margin: "2px 0 0 0", color: "#475569" }}>
-                  {user.role === "MENTOR" ? userDisc.mentoringAdvice.asMentor : userDisc.mentoringAdvice.asMentee}
-                </p>
-              </div>
-            </div>
+            <p>
+              <strong>
+                Mentoring Dynamic (
+                {user.role === "MENTOR" ? "As a Mentor" : "As a Mentee"}):
+              </strong>{" "}
+              {user.role === "MENTOR"
+                ? userDisc.mentoringAdvice.asMentor
+                : userDisc.mentoringAdvice.asMentee}
+            </p>
           </div>
         ) : (
-          <p className="notice">
-            You have not completed the reflection yet. Select the options that best reflect your natural approach below.
+          <p className="message">
+            You have not completed the reflection yet. Select the options that
+            best reflect your natural approach below.
           </p>
         )}
 
-        <details className="record" style={{ marginTop: 12 }}>
-          <summary style={{ fontWeight: "bold", cursor: "pointer" }}>
-            {user.discStyle ? "Retake DISC Reflection Exercise" : "Take DISC Reflection Exercise"}
-          </summary>
-          <form onSubmit={(e) => void submit(e, true)} style={{ marginTop: 16 }}>
-            <fieldset disabled={busy}>
+        <CollapsibleCard
+          title={
+            user.discStyle
+              ? "Retake DISC Reflection Exercise"
+              : "Take DISC Reflection Exercise"
+          }
+          summary="5 multiple-choice questions"
+          defaultOpen={!user.discStyle}
+        >
+          <form onSubmit={(e) => void submit(e, true)} className="form">
+            <fieldset
+              disabled={busy}
+              className="form"
+              style={{ border: 0, padding: 0, margin: 0 }}
+            >
               {DISC_QUESTIONS.map((q) => (
-                <fieldset className="record" key={q.id}>
-                  <legend style={{ fontWeight: "bold" }}>{q.question}</legend>
-                  {q.options.map((option) => (
-                    <label
-                      key={option.key}
-                      style={{ display: "flex", gap: 10, fontWeight: 400, margin: "6px 0" }}
-                    >
-                      <input
-                        style={{ width: 18, margin: 0 }}
-                        type="radio"
-                        name={"question-" + q.id}
-                        value={option.key}
-                        required
-                      />
-                      <span>
-                        <strong>[{option.key}]</strong> {option.text}
-                      </span>
-                    </label>
-                  ))}
+                <fieldset className="feedback-question" key={q.id}>
+                  <legend>{q.question}</legend>
+                  <div className="form" style={{ gap: "0.5rem" }}>
+                    {q.options.map((option) => (
+                      <label key={option.key} className="checkbox">
+                        <input
+                          type="radio"
+                          name={"question-" + q.id}
+                          value={option.key}
+                          required
+                        />
+                        <span>
+                          <strong>[{option.key}]</strong> {option.text}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </fieldset>
               ))}
-              <button style={{ marginTop: 12 }}>Save reflection</button>
+              <div>
+                <button type="submit">Save reflection</button>
+              </div>
             </fieldset>
           </form>
-        </details>
+        </CollapsibleCard>
       </section>
     </>
   );
 }
+
 export default function Onboarding() {
   const { user, loading, refreshUser } = useAuth();
-  if (loading || !user) return <main className="coach">Checking sign-in…</main>;
+  if (loading || !user) return <main className="container">Checking sign-in…</main>;
   return (
-    <main className="coach">
-      <header>
-        <h1>My learning profile</h1>
-        <Link href="/dashboard">← Dashboard</Link>
-      </header>
+    <main className="container">
+      <AdminHero
+        icon={UserCircle}
+        title="My learning profile"
+        subtitle="Share your career goals, site location, availability, and DISC communication reflection."
+      />
       <ProfileForm user={user} refresh={refreshUser} />
     </main>
   );

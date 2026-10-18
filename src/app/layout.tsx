@@ -1,22 +1,29 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import localFont from "next/font/local";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 import { AuthProvider } from "@/context/AuthContext";
+import { AppShell } from "@/components/AppShell";
+
+const inter = localFont({
+  src: "./fonts/inter-latin-wght-normal.woff2",
+  variable: "--font-inter",
+  display: "swap",
+  weight: "100 900",
+});
 
 export const metadata: Metadata = {
-  title: "Margdarshan",
-  description: "Internal Corporate Mentoring Platform",
+  title: "RDC Margdarshan",
+  description: "Mentoring & Coaching Portal for RDC Concrete",
+  appleWebApp: {
+    capable: true,
+    title: "RDC Margdarshan",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#12233f",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -25,13 +32,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <AuthProvider>{children}</AuthProvider>
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
+      <body suppressHydrationWarning>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
       </body>
     </html>
   );

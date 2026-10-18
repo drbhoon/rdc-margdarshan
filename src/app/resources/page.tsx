@@ -1,7 +1,11 @@
 "use client";
+
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import Link from "next/link";
+import { BookOpen } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { AdminHero } from "@/components/admin-ui";
+import { CollapsibleCard } from "@/components/collapsible-card";
+
 type Resource = {
   id: string;
   title: string;
@@ -10,23 +14,26 @@ type Resource = {
   tags: string[];
   isApproved: boolean;
 };
+
 export default function Resources() {
   const { user, loading } = useAuth();
   const [resources, setResources] = useState<Resource[]>([]),
     [error, setError] = useState(""),
     [query, setQuery] = useState(""),
     [busy, setBusy] = useState(false);
+
   const load = useCallback(async () => {
     const r = await fetch("/api/resources");
     const j = await r.json();
     if (!r.ok) throw new Error(j.error);
     setResources(j.resources);
   }, []);
-  // Synchronize with the remote API; state is updated only after the response resolves.
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (user) void load().catch((e) => setError(e.message));
   }, [user, load]);
+
   async function send(method: string, data: unknown) {
     setBusy(true);
     setError("");
@@ -47,6 +54,7 @@ export default function Resources() {
       setBusy(false);
     }
   }
+
   async function contribute(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget,
@@ -62,93 +70,146 @@ export default function Resources() {
     )
       form.reset();
   }
-  if (loading || !user) return <main className="coach">Checking sign-in…</main>;
+
+  if (loading || !user) return <main className="container">Checking sign-in…</main>;
+
+  const filtered = resources.filter((r) =>
+    (r.title + " " + r.content + " " + r.tags.join(" "))
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
+
   return (
-    <main className="coach">
-      <header>
-        <h1>Resource hub</h1>
-        <Link href="/dashboard">← Dashboard</Link>
-      </header>
+    <main className="container">
+      <AdminHero
+        icon={BookOpen}
+        title="Resource hub"
+        subtitle="Shared guides, plant SOP notes, and mentoring tips for RDC Concrete teams."
+      />
+
       {error && (
-        <p role="alert" className="notice error">
+        <p role="alert" className="message error-box">
           {error}
         </p>
       )}
-      <section className="card">
-        <h2>Share useful learning</h2>
-        <p>
+
+      <CollapsibleCard
+        title="Contribute a resource"
+        summary="share useful learning with the cohort"
+      >
+        <p className="muted">
           Resources are reviewed by administrators before appearing for
           everyone. Contributions are visible to you and the administrators
           while awaiting review.
         </p>
-        <details>
-          <summary>Contribute a resource</summary>
-          <form onSubmit={contribute}>
-            <fieldset disabled={busy}>
+        <form onSubmit={contribute} className="form">
+          <fieldset
+            disabled={busy}
+            className="form"
+            style={{ border: 0, padding: 0, margin: 0 }}
+          >
+            <div className="form-row">
               <label>
-                Title
+                Title *
                 <input name="title" required maxLength={500} />
               </label>
               <label>
                 HTTPS link (optional)
-                <input name="url" type="url" />
+                <input name="url" type="url" placeholder="https://..." />
               </label>
-              <label>
-                Learning content / सीख
-                <textarea name="content" maxLength={20000} />
-              </label>
-              <label>
-                Tags, separated by commas
-                <input name="tags" />
-              </label>
-              <button>Submit resource</button>
-            </fieldset>
-          </form>
-        </details>
-      </section>
-      <label>
-        Search resources
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </label>
-      {resources
-        .filter((r) =>
-          (r.title + " " + r.content + " " + r.tags.join(" "))
-            .toLowerCase()
-            .includes(query.toLowerCase()),
-        )
-        .map((r) => (
-          <article className="card" key={r.id}>
-            <span className="pill">
-              {r.isApproved ? "Approved" : "Awaiting review"}
-            </span>
-            <h2>{r.title}</h2>
-            <pre>{r.content}</pre>
-            <p className="muted">{r.tags.join(" · ")}</p>
-            {r.url?.startsWith("https://") && (
-              <p>
-                <a href={r.url} target="_blank" rel="noopener noreferrer">
-                  Open resource ↗
-                </a>
-              </p>
-            )}
-            {user.role === "ADMIN" && (
-              <button
-                disabled={busy}
-                className="secondary"
-                onClick={() =>
-                  void send("PUT", { id: r.id, isApproved: !r.isApproved })
-                }
+            </div>
+            <label>
+              Learning content / सीख
+              <textarea name="content" maxLength={20000} />
+            </label>
+            <label>
+              Tags, separated by commas
+              <input name="tags" placeholder="Safety, Quality, Operations" />
+            </label>
+            <div>
+              <button type="submit">Submit resource</button>
+            </div>
+          </fieldset>
+        </form>
+      </CollapsibleCard>
+
+      <section className="card">
+        <h2>Browse resources ({filtered.length})</h2>
+        <div className="employee-search">
+          <input
+            type="search"
+            placeholder="Search resources by title, content, or tag…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {query && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setQuery("")}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        <div className="form" style={{ marginTop: "1rem" }}>
+          {filtered.map((r) => (
+            <article className="record" key={r.id} style={{ margin: 0 }}>
+              <div className="badge-row">
+                <span
+                  className={`status-pill ${
+                    r.isApproved ? "status-completed" : "status-proposed"
+                  }`}
+                >
+                  {r.isApproved ? "Approved" : "Awaiting review"}
+                </span>
+                {r.tags.map((tag) => (
+                  <span key={tag} className="badge">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              <h3>{r.title}</h3>
+              {r.content && <pre>{r.content}</pre>}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.6rem",
+                  alignItems: "center",
+                  marginTop: "0.6rem",
+                }}
               >
-                {r.isApproved ? "Withdraw approval" : "Approve resource"}
-              </button>
-            )}
-          </article>
-        ))}
-      {!resources.length && <p>No resources have been shared yet.</p>}
+                {r.url?.startsWith("https://") && (
+                  <a
+                    className="button secondary"
+                    href={r.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open resource ↗
+                  </a>
+                )}
+                {user.role === "ADMIN" && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="secondary"
+                    onClick={() =>
+                      void send("PUT", { id: r.id, isApproved: !r.isApproved })
+                    }
+                  >
+                    {r.isApproved ? "Withdraw approval" : "Approve resource"}
+                  </button>
+                )}
+              </div>
+            </article>
+          ))}
+          {!filtered.length && (
+            <p className="muted">No resources match your search.</p>
+          )}
+        </div>
+      </section>
     </main>
   );
 }
