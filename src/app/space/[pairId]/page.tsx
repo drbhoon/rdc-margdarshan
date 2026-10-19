@@ -171,8 +171,28 @@ function SessionEditor({
   const [transcriptionDraft, setTranscriptionDraft] = useState(record.transcriptionNotes || "");
   const recognitionRef = useRef<any>(null);
 
+  const [confirmMenteeSubmit, setConfirmMenteeSubmit] = useState(false);
+  const [confirmMentorSubmit, setConfirmMentorSubmit] = useState(false);
+  const [menteeQaError, setMenteeQaError] = useState<string | null>(null);
+  const [mentorQaError, setMentorQaError] = useState<string | null>(null);
+
   const isMentor = userCode === pair.mentorCode || userRole === "ADMIN";
   const isMentee = userCode === pair.menteeCode;
+
+  const isMenteeQaRecorded = Boolean(
+    record.agenda?.trim() &&
+      record.preSessionNotes?.trim() &&
+      record.discussionPoints?.trim() &&
+      record.insights?.trim() &&
+      record.commitments?.trim() &&
+      record.supportNeeded?.trim() &&
+      record.postSessionReflectionMentee?.trim(),
+  );
+
+  const isMentorQaRecorded = Boolean(
+    record.mentorComments?.trim() &&
+      record.postSessionReflectionMentor?.trim(),
+  );
 
   if (!dirty && base.version !== record.version) {
     setBase(record);
@@ -259,31 +279,98 @@ function SessionEditor({
     }
   };
 
-  async function save(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const data = new FormData(e.currentTarget);
-    const payload: Record<string, unknown> = { version: base.version };
+  const menteeFieldList: Array<[keyof SessionRecord, string]> = [
+    ["agenda", "1. Agenda / चर्चा की योजना"],
+    ["preSessionNotes", "2. Preparation / तैयारी"],
+    ["discussionPoints", "3. What we discussed / चर्चा के मुख्य बिंदु"],
+    ["insights", "4. Learning & insights / सीख"],
+    ["commitments", "5. Commitments & Experiments / संकल्प"],
+    ["supportNeeded", "6. Support needed / सहयोग"],
+    ["postSessionReflectionMentee", "7. Mentee Reflection / मेंटी का आत्मचिंतन"],
+  ];
 
-    // Standard session preparation / shared fields
-    for (const [key] of fields) {
-      const val = data.get(key);
-      if (val !== null) payload[key] = String(val);
+  const requestMenteeSubmit = () => {
+    if (!form.current || isMenteeQaRecorded) return;
+    const data = new FormData(form.current);
+    for (const [key, label] of menteeFieldList) {
+      const val = String(data.get(key) ?? "").trim();
+      if (!val) {
+        setMenteeQaError(
+          `Please fill "${label}". All Q&A boxes are mandatory (you may write NIL if not applicable).`,
+        );
+        const el = form.current.querySelector<HTMLTextAreaElement>(
+          `textarea[name="${key}"]`,
+        );
+        el?.focus();
+        return;
+      }
     }
+    setMenteeQaError(null);
+    setConfirmMenteeSubmit(true);
+  };
 
-    // Role-specific reflections
-    if (data.get("postSessionReflectionMentee") !== null) {
-      payload.postSessionReflectionMentee = String(data.get("postSessionReflectionMentee") ?? "");
+  const executeMenteeSubmit = async () => {
+    if (!form.current || isMenteeQaRecorded) return;
+    const data = new FormData(form.current);
+    const payload: Record<string, unknown> = { version: record.version };
+    for (const [key] of menteeFieldList) {
+      payload[key] = String(data.get(key) ?? "").trim();
     }
-    if (isMentor && data.get("postSessionReflectionMentor") !== null) {
-      payload.postSessionReflectionMentor = String(data.get("postSessionReflectionMentor") ?? "");
+    if (await send("/session/" + record.id, "PUT", payload)) {
+      setConfirmMenteeSubmit(false);
+      setMenteeQaError(null);
+      setDirty(false);
+      dirtyChanged(record.id, false);
     }
+  };
 
-    // Mentor comments
-    if (isMentor && data.get("mentorComments") !== null) {
-      payload.mentorComments = String(data.get("mentorComments") ?? "");
+  const requestMentorSubmit = () => {
+    if (!form.current || isMentorQaRecorded) return;
+    const data = new FormData(form.current);
+    const comments = String(data.get("mentorComments") ?? "").trim();
+    const reflection = String(data.get("postSessionReflectionMentor") ?? "").trim();
+    if (!comments) {
+      setMentorQaError(
+        'Please fill "Mentor Guidance & Actionable Feedback". All Q&A boxes are mandatory (you may write NIL if not applicable).',
+      );
+      form.current.querySelector<HTMLTextAreaElement>('textarea[name="mentorComments"]')?.focus();
+      return;
     }
+    if (!reflection) {
+      setMentorQaError(
+        'Please fill "My Reflection (Mentor)". All Q&A boxes are mandatory (you may write NIL if not applicable).',
+      );
+      form.current.querySelector<HTMLTextAreaElement>('textarea[name="postSessionReflectionMentor"]')?.focus();
+      return;
+    }
+    setMentorQaError(null);
+    setConfirmMentorSubmit(true);
+  };
 
-    // Meeting notes and transcription
+  const executeMentorSubmit = async () => {
+    if (!form.current || isMentorQaRecorded) return;
+    const data = new FormData(form.current);
+    const payload: Record<string, unknown> = {
+      version: record.version,
+      mentorComments: String(data.get("mentorComments") ?? "").trim(),
+      postSessionReflectionMentor: String(
+        data.get("postSessionReflectionMentor") ?? "",
+      ).trim(),
+    };
+    if (await send("/session/" + record.id, "PUT", payload)) {
+      setConfirmMentorSubmit(false);
+      setMentorQaError(null);
+      setDirty(false);
+      dirtyChanged(record.id, false);
+    }
+  };
+
+  async function saveLogisticsAndMinutes(e?: FormEvent<HTMLFormElement>) {
+    if (e) e.preventDefault();
+    if (!form.current) return;
+    const data = new FormData(form.current);
+    const payload: Record<string, unknown> = { version: record.version };
+
     if (data.get("meetingNotes") !== null) {
       payload.meetingNotes = String(data.get("meetingNotes") ?? "");
     }
@@ -292,7 +379,6 @@ function SessionEditor({
     }
     payload.transcriptionNotes = transcriptionDraft;
 
-    // Status & logistics
     payload.status = String(data.get("status") || base.status);
     const date = String(data.get("scheduledTime") ?? "");
     payload.scheduledTime = date ? date + ":00+05:30" : null;
@@ -309,10 +395,17 @@ function SessionEditor({
     isMentor ? pair.mentor.name : pair.mentee.name,
   )}`;
 
+  const lockedTextareaStyle = {
+    backgroundColor: "#f8fafc",
+    color: "#334155",
+    borderColor: "#cbd5e1",
+    cursor: "not-allowed",
+  };
+
   return (
     <form
       ref={form}
-      onSubmit={save}
+      onSubmit={saveLogisticsAndMinutes}
       onChange={() => {
         setDirty(true);
         dirtyChanged(record.id, true);
@@ -566,6 +659,16 @@ function SessionEditor({
               </a>
             </div>
           )}
+
+          <div style={{ marginTop: 12 }}>
+            <button
+              type="submit"
+              className="secondary"
+              style={{ fontSize: 12, padding: "6px 14px" }}
+            >
+              💾 Save Meeting Logistics
+            </button>
+          </div>
         </section>
 
         {/* ========================================================================= */}
@@ -593,97 +696,253 @@ function SessionEditor({
             <span
               className="pill"
               style={{
-                backgroundColor: isMentee ? "#e0e7ff" : "#f1f5f9",
-                color: isMentee ? "#3730a3" : "#475569",
+                backgroundColor: isMenteeQaRecorded
+                  ? "#dcfce7"
+                  : isMentee
+                  ? "#e0e7ff"
+                  : "#f1f5f9",
+                color: isMenteeQaRecorded
+                  ? "#166534"
+                  : isMentee
+                  ? "#3730a3"
+                  : "#475569",
+                fontWeight: 700,
               }}
             >
-              {isMentee ? "You (Mentee Author)" : `${pair.mentee.name}'s Submission`}
+              {isMenteeQaRecorded
+                ? "✓ Q&A Recorded"
+                : isMentee
+                ? "You (Mentee Author)"
+                : `${pair.mentee.name}'s Submission`}
             </span>
           </div>
 
+          {!isMenteeQaRecorded && (
+            <div
+              style={{
+                padding: "8px 12px",
+                marginBottom: 14,
+                borderRadius: 8,
+                backgroundColor: "#eef2ff",
+                border: "1px solid #c7d2fe",
+                fontSize: 12,
+                color: "#3730a3",
+              }}
+            >
+              <strong>Mandatory Q&A:</strong> All 7 boxes below are mandatory to fill before saving. You may write <strong>NIL</strong> if not applicable. Once submitted, no editing is allowed.
+            </div>
+          )}
+
           <div className="space-y-4">
             <label>
-              1. Agenda / चर्चा की योजना
+              <span>
+                1. Agenda / चर्चा की योजना <span style={{ color: "#dc2626" }}>*</span>
+              </span>
               <textarea
                 name="agenda"
                 defaultValue={base.agenda ?? ""}
-                placeholder="Key topics to cover in this session..."
+                readOnly={isMenteeQaRecorded}
+                onChange={() => setMenteeQaError(null)}
+                placeholder="Key topics to cover in this session... (Mandatory — write NIL if not applicable)"
                 maxLength={20000}
+                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
               />
             </label>
 
             <label>
-              2. Preparation / तैयारी
+              <span>
+                2. Preparation / तैयारी <span style={{ color: "#dc2626" }}>*</span>
+              </span>
               <textarea
                 name="preSessionNotes"
                 defaultValue={base.preSessionNotes ?? ""}
-                placeholder="What have you studied, observed, or prepared before this discussion?"
+                readOnly={isMenteeQaRecorded}
+                onChange={() => setMenteeQaError(null)}
+                placeholder="What have you studied, observed, or prepared before this discussion? (Mandatory — write NIL if not applicable)"
                 maxLength={20000}
+                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
               />
             </label>
 
             <label>
-              3. What we discussed / चर्चा के मुख्य बिंदु
+              <span>
+                3. What we discussed / चर्चा के मुख्य बिंदु <span style={{ color: "#dc2626" }}>*</span>
+              </span>
               <textarea
                 name="discussionPoints"
                 defaultValue={base.discussionPoints ?? ""}
-                placeholder="Key points and insights explored during the conversation..."
+                readOnly={isMenteeQaRecorded}
+                onChange={() => setMenteeQaError(null)}
+                placeholder="Key points and insights explored during the conversation... (Mandatory — write NIL if not applicable)"
                 maxLength={20000}
+                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
               />
             </label>
 
             <label>
-              4. Learning & insights / सीख
+              <span>
+                4. Learning & insights / सीख <span style={{ color: "#dc2626" }}>*</span>
+              </span>
               <textarea
                 name="insights"
                 defaultValue={base.insights ?? ""}
-                placeholder="What was your biggest takeaway from this session?"
+                readOnly={isMenteeQaRecorded}
+                onChange={() => setMenteeQaError(null)}
+                placeholder="What was your biggest takeaway from this session? (Mandatory — write NIL if not applicable)"
                 maxLength={20000}
+                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
               />
             </label>
 
             <label>
-              5. Commitments & Experiments / संकल्प
+              <span>
+                5. Commitments & Experiments / संकल्प <span style={{ color: "#dc2626" }}>*</span>
+              </span>
               <textarea
                 name="commitments"
                 defaultValue={base.commitments ?? ""}
-                placeholder="Specific actions you will take on the plant/site before the next week..."
+                readOnly={isMenteeQaRecorded}
+                onChange={() => setMenteeQaError(null)}
+                placeholder="Specific actions you will take on the plant/site before the next week... (Mandatory — write NIL if not applicable)"
                 maxLength={20000}
+                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
               />
             </label>
 
             <label>
-              6. Support needed / सहयोग
+              <span>
+                6. Support needed / सहयोग <span style={{ color: "#dc2626" }}>*</span>
+              </span>
               <textarea
                 name="supportNeeded"
                 defaultValue={base.supportNeeded ?? ""}
-                placeholder="Support, telemetry access, or coaching needed from mentor/leadership..."
+                readOnly={isMenteeQaRecorded}
+                onChange={() => setMenteeQaError(null)}
+                placeholder="Support, telemetry access, or coaching needed from mentor/leadership... (Mandatory — write NIL if not applicable)"
                 maxLength={20000}
+                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
               />
             </label>
 
             <label>
-              Mentee Reflection / मेंटी का आत्मचिंतन
+              <span>
+                7. Mentee Reflection / मेंटी का आत्मचिंतन <span style={{ color: "#dc2626" }}>*</span>
+              </span>
               <textarea
                 name="postSessionReflectionMentee"
                 defaultValue={base.postSessionReflectionMentee ?? ""}
-                placeholder="Personal reflection on your progress and growth this week..."
+                readOnly={isMenteeQaRecorded}
+                onChange={() => setMenteeQaError(null)}
+                placeholder="Personal reflection on your progress and growth this week... (Mandatory — write NIL if not applicable)"
                 maxLength={20000}
+                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
               />
             </label>
 
-            <button
-              type="submit"
-              style={{
-                backgroundColor: "#4f46e5",
-                color: "#fff",
-                fontWeight: 700,
-                padding: "8px 18px",
-                borderRadius: 8,
-              }}
-            >
-              💾 Save Preparation & Answers / उत्तर सहेजें
-            </button>
+            {menteeQaError && (
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  backgroundColor: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  color: "#b91c1c",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                ⚠️ {menteeQaError}
+              </div>
+            )}
+
+            {isMenteeQaRecorded ? (
+              <div
+                style={{
+                  width: "100%",
+                  padding: "12px 18px",
+                  borderRadius: 10,
+                  backgroundColor: "#dcfce7",
+                  border: "1px solid #86efac",
+                  color: "#166534",
+                  fontWeight: 800,
+                  fontSize: 14,
+                  textAlign: "center",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <span>✓ Your Q&A are Recorded</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#15803d" }}>
+                  (No Editing Allowed)
+                </span>
+              </div>
+            ) : confirmMenteeSubmit ? (
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: 10,
+                  backgroundColor: "#fffbeb",
+                  border: "2px solid #f59e0b",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#92400e" }}>
+                    ⚠️ Do you Wish to Submit Now?
+                  </p>
+                  <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#b45309" }}>
+                    Once submitted, your Q&A are recorded and no further editing is allowed.
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={executeMenteeSubmit}
+                    style={{
+                      backgroundColor: "#16a34a",
+                      color: "#ffffff",
+                      fontWeight: 700,
+                      padding: "8px 16px",
+                      borderRadius: 8,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✓ Yes, Submit Now
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setConfirmMenteeSubmit(false)}
+                    style={{ padding: "8px 14px", borderRadius: 8 }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={requestMenteeSubmit}
+                style={{
+                  width: "100%",
+                  backgroundColor: "#4f46e5",
+                  color: "#fff",
+                  fontWeight: 700,
+                  padding: "10px 18px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                }}
+              >
+                💾 Save Preparation & Answers / उत्तर सहेजें
+              </button>
+            )}
           </div>
         </section>
 
@@ -722,52 +981,182 @@ function SessionEditor({
                 fontWeight: 700,
               }}
             >
-              Mentor Review
+              {isMentorQaRecorded ? "✓ Q&A Recorded" : "Mentor Review"}
             </span>
           </div>
 
           {/* If Mentor: Rich Editor for Mentor Comments */}
           {isMentor ? (
             <div className="space-y-4">
+              {!isMentorQaRecorded && (
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    backgroundColor: "#dcfce7",
+                    border: "1px solid #86efac",
+                    fontSize: 12,
+                    color: "#166534",
+                  }}
+                >
+                  <strong>Mandatory Q&A:</strong> Both Mentor Q&A boxes below are mandatory to fill before saving. You may write <strong>NIL</strong> if not applicable. Once submitted, no editing is allowed.
+                </div>
+              )}
+
               <label>
-                Mentor Guidance & Actionable Feedback for {pair.mentee.name}
+                <span>
+                  1. Mentor Guidance & Actionable Feedback for {pair.mentee.name}{" "}
+                  <span style={{ color: "#dc2626" }}>*</span>
+                </span>
                 <textarea
                   name="mentorComments"
                   defaultValue={base.mentorComments ?? ""}
-                  placeholder="Share feedback on mentee's answers, praise for initiative, guidance on RDC plant operations, and agreed next steps..."
+                  readOnly={isMentorQaRecorded}
+                  onChange={() => setMentorQaError(null)}
+                  placeholder="Share feedback on mentee's answers, praise for initiative, guidance on RDC plant operations, and agreed next steps... (Mandatory — write NIL if not applicable)"
                   rows={4}
                   maxLength={20000}
-                  style={{
-                    borderColor: "#86efac",
-                    backgroundColor: "#ffffff",
-                    fontSize: 13,
-                  }}
+                  style={
+                    isMentorQaRecorded
+                      ? lockedTextareaStyle
+                      : {
+                          borderColor: "#86efac",
+                          backgroundColor: "#ffffff",
+                          fontSize: 13,
+                        }
+                  }
                 />
               </label>
 
               <label>
-                My Reflection (Mentor) / मेरा आत्मचिंतन (मेंटर)
+                <span>
+                  2. My Reflection (Mentor) / मेरा आत्मचिंतन (मेंटर){" "}
+                  <span style={{ color: "#dc2626" }}>*</span>
+                </span>
                 <textarea
                   name="postSessionReflectionMentor"
                   defaultValue={base.postSessionReflectionMentor ?? ""}
-                  placeholder="Reflect on your coaching style, listening balance, and progress observed..."
+                  readOnly={isMentorQaRecorded}
+                  onChange={() => setMentorQaError(null)}
+                  placeholder="Reflect on your coaching style, listening balance, and progress observed... (Mandatory — write NIL if not applicable)"
                   rows={2}
                   maxLength={20000}
+                  style={
+                    isMentorQaRecorded
+                      ? lockedTextareaStyle
+                      : {
+                          borderColor: "#86efac",
+                          backgroundColor: "#ffffff",
+                          fontSize: 13,
+                        }
+                  }
                 />
               </label>
 
-              <button
-                type="submit"
-                style={{
-                  backgroundColor: "#16a34a",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  padding: "8px 18px",
-                  borderRadius: 8,
-                }}
-              >
-                💾 Save Mentor Feedback & Comments / मार्गदर्शन सहेजें
-              </button>
+              {mentorQaError && (
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    backgroundColor: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    color: "#b91c1c",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚠️ {mentorQaError}
+                </div>
+              )}
+
+              {isMentorQaRecorded ? (
+                <div
+                  style={{
+                    width: "100%",
+                    padding: "12px 18px",
+                    borderRadius: 10,
+                    backgroundColor: "#dcfce7",
+                    border: "1px solid #86efac",
+                    color: "#166534",
+                    fontWeight: 800,
+                    fontSize: 14,
+                    textAlign: "center",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span>✓ Your Q&A are Recorded</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#15803d" }}>
+                    (No Editing Allowed)
+                  </span>
+                </div>
+              ) : confirmMentorSubmit ? (
+                <div
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: 10,
+                    backgroundColor: "#fffbeb",
+                    border: "2px solid #f59e0b",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#92400e" }}>
+                      ⚠️ Do you Wish to Submit Now?
+                    </p>
+                    <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#b45309" }}>
+                      Once submitted, your Q&A are recorded and no further editing is allowed.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={executeMentorSubmit}
+                      style={{
+                        backgroundColor: "#16a34a",
+                        color: "#ffffff",
+                        fontWeight: 700,
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✓ Yes, Submit Now
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => setConfirmMentorSubmit(false)}
+                      style={{ padding: "8px 14px", borderRadius: 8 }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={requestMentorSubmit}
+                  style={{
+                    width: "100%",
+                    backgroundColor: "#16a34a",
+                    color: "#ffffff",
+                    fontWeight: 700,
+                    padding: "10px 18px",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                  }}
+                >
+                  💾 Save Mentor Feedback & Comments / मार्गदर्शन सहेजें
+                </button>
+              )}
             </div>
           ) : (
             /* If Mentee: High-Visibility View of Mentor's Feedback */

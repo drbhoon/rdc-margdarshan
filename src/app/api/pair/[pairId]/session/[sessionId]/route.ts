@@ -36,6 +36,88 @@ export const PUT = protectedRoute(
         status: previous.status,
       };
 
+      const menteeQaKeys = [
+        "agenda",
+        "preSessionNotes",
+        "discussionPoints",
+        "insights",
+        "commitments",
+        "supportNeeded",
+        "postSessionReflectionMentee",
+      ] as const;
+
+      const mentorQaKeys = [
+        "mentorComments",
+        "postSessionReflectionMentor",
+      ] as const;
+
+      const wasMenteeQaRecorded = menteeQaKeys.every(
+        (k) => (previous[k] ?? "").trim().length > 0,
+      );
+      const wasMentorQaRecorded = mentorQaKeys.every(
+        (k) => (previous[k] ?? "").trim().length > 0,
+      );
+
+      const isSubmittingMenteeQa = menteeQaKeys.some(
+        (k) => body[k] !== undefined,
+      );
+      if (isSubmittingMenteeQa) {
+        if (wasMenteeQaRecorded) {
+          const isModified = menteeQaKeys.some(
+            (k) =>
+              body[k] !== undefined &&
+              textValue(body[k]) !== (previous[k] ?? ""),
+          );
+          if (isModified) {
+            throw new AccessError(
+              403,
+              "Your Q&A are Recorded. No editing is allowed.",
+            );
+          }
+        } else {
+          for (const k of menteeQaKeys) {
+            const val =
+              body[k] !== undefined ? textValue(body[k]) : (previous[k] ?? "");
+            if (!val.trim()) {
+              throw new AccessError(
+                400,
+                "All Mentee Q&A boxes are mandatory to fill (you may write NIL).",
+              );
+            }
+          }
+        }
+      }
+
+      const isSubmittingMentorQa = mentorQaKeys.some(
+        (k) => body[k] !== undefined,
+      );
+      if (isSubmittingMentorQa) {
+        if (wasMentorQaRecorded) {
+          const isModified = mentorQaKeys.some(
+            (k) =>
+              body[k] !== undefined &&
+              textValue(body[k]) !== (previous[k] ?? ""),
+          );
+          if (isModified) {
+            throw new AccessError(
+              403,
+              "Your Q&A are Recorded. No editing is allowed.",
+            );
+          }
+        } else {
+          for (const k of mentorQaKeys) {
+            const val =
+              body[k] !== undefined ? textValue(body[k]) : (previous[k] ?? "");
+            if (!val.trim()) {
+              throw new AccessError(
+                400,
+                "All Mentor Q&A boxes are mandatory to fill (you may write NIL).",
+              );
+            }
+          }
+        }
+      }
+
       const data: Prisma.SessionUpdateInput = { version: { increment: 1 } };
       for (const key of [
         "agenda",
