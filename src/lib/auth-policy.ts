@@ -1,8 +1,11 @@
 export const CORPORATE_DOMAIN = "rdc.in";
+export const CORPORATE_DOMAINS = ["rdc.in", "ultrafine.in"] as const;
 export function corporateEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const email = value.trim().toLowerCase();
-  return /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@rdc\.in$/.test(email) ? email : null;
+  return /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(rdc|ultrafine)\.in$/.test(email)
+    ? email
+    : null;
 }
 export function isAdminEmail(
   email: string,
@@ -46,11 +49,13 @@ export function validGoogleIdentity(
   const hasSub = Boolean(payload.sub);
   const isVerified = payload.email_verified === true;
   const isCorporate = Boolean(corporateEmail(payload.email));
-  // If Google Workspace hosted domain claim is present, verify it; otherwise verified corporateEmail guarantees @rdc.in
+  // If Google Workspace hosted domain claim is present, verify it matches an allowed corporate domain
   const matchesDomain =
     !payload.hd ||
-    payload.hd === CORPORATE_DOMAIN ||
-    Boolean(payload.email?.toLowerCase().endsWith("@" + CORPORATE_DOMAIN));
+    (CORPORATE_DOMAINS as readonly string[]).includes(payload.hd) ||
+    CORPORATE_DOMAINS.some((domain) =>
+      Boolean(payload.email?.toLowerCase().endsWith("@" + domain)),
+    );
   // If Google returned nonce in the ID token, verify it matches; otherwise PKCE code verifier ensures freshness
   const matchesNonce = !payload.nonce || payload.nonce === nonce;
 

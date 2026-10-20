@@ -16,7 +16,6 @@ export async function GET() {
       scope: ["openid", "email", "profile"],
       state,
       nonce,
-      hd: "rdc.in",
       prompt: "select_account",
       code_challenge: crypto
         .createHash("sha256")

@@ -88,7 +88,8 @@ export default function LoginPage() {
         <div className="card">
           <h1>Sign in</h1>
           <p className="muted">
-            Use your verified RDC Concrete Google account to access your
+            Use your verified RDC Concrete (<code>@rdc.in</code>) or Ultrafine
+            Minerals (<code>@ultrafine.in</code>) Google account to access your
             mentoring workspace.
           </p>
 

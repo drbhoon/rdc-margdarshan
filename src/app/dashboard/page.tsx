@@ -1394,12 +1394,12 @@ export default function Dashboard() {
                     </div>
                     <div className="form-row" style={{ marginTop: "0.75rem" }}>
                       <label>
-                        RDC Email *
+                        Corporate Email (@rdc.in / @ultrafine.in) *
                         <input
                           name="email"
                           type="email"
                           required
-                          placeholder="name@rdc.in"
+                          placeholder="name@rdc.in or name@ultrafine.in"
                         />
                       </label>
                       <label>

@@ -98,7 +98,7 @@ export const POST = protectedRoute(async (req: NextRequest) => {
         )
           throw new AccessError(
             400,
-            "Each candidate needs a code, name, RDC email and mentor/mentee role.",
+            "Each candidate needs a code, name, corporate email (@rdc.in or @ultrafine.in) and mentor/mentee role.",
           );
         const mentorCapacity =
           c.role === "MENTOR" ? Number(c.mentorCapacity ?? 2) : 1;
