@@ -5,10 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint",
-    "postinstall": "prisma generate"
+    "lint": "eslint"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
@@ -20,6 +19,7 @@
     "next": "^16.3.6",
     "nodemailer": "^10.0.9",
     "pg": "^8.23.0",
+    "prisma": "^7.9.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -34,7 +34,6 @@
     "eslint": "^9",
     "eslint-config-next": "^16.3.6",
     "prettier": "^3.9.6",
-    "prisma": "^7.9.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
     "typescript": "^5"
