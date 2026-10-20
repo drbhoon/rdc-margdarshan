@@ -9,9 +9,11 @@ import {
 } from "@/lib/access";
 import { createPair, lockMatching } from "@/lib/pairing";
 import { calculateMatchScore } from "@/lib/competencies";
+import { sendPairingProposalEmail } from "@/lib/email";
 export const POST = protectedRoute(async (req: NextRequest) => {
   const user = (await getSession())!;
   const body = await req.json();
+  const appOrigin = req.nextUrl.origin;
   const result = await prisma.$transaction(async (tx) => {
     await lockMatching(tx);
     if (body.action === "PREVIEW_SCORE") {
@@ -26,22 +28,39 @@ export const POST = protectedRoute(async (req: NextRequest) => {
       return { score: calculateMatchScore(mentor, mentee) };
     }
     if (body.action === "CREATE_PAIR") {
-      const pair = await createPair(
-        tx,
-        textValue(body.mentorCode, 100),
-        textValue(body.menteeCode, 100),
-      );
+      const mentorCode = textValue(body.mentorCode, 100);
+      const menteeCode = textValue(body.menteeCode, 100);
+      const pair = await createPair(tx, mentorCode, menteeCode);
+      const mentor = await tx.employee.findUnique({
+        where: { employeeCode: mentorCode },
+      });
+      const mentee = await tx.employee.findUnique({
+        where: { employeeCode: menteeCode },
+      });
       await logChange(tx, user, "CREATE_PAIR", { pairId: pair.id });
-      return { success: true, pair, matchScore: pair.matchScore };
+      return {
+        success: true,
+        pair,
+        matchScore: pair.matchScore,
+        emailPairs:
+          mentor && mentee
+            ? [{ mentor, mentee, matchScore: pair.matchScore }]
+            : [],
+        message:
+          mentor && mentee
+            ? `Created pairing proposal (${mentee.name} & ${mentor.name}) and sent invitation emails.`
+            : "Created pairing proposal.",
+      };
     }
     if (body.action === "CONFIRM_ALL" || body.action === "CONFIRM_PAIR") {
       const pairs = await tx.mentoringPair.findMany({
         where: {
-          status: "PROPOSED",
+          status: { in: ["PROPOSED", "PENDING_ACCEPTANCE"] },
           ...(body.action === "CONFIRM_PAIR"
             ? { id: textValue(body.pairId, 100) }
             : {}),
         },
+        include: { mentor: true, mentee: true },
       });
       for (const pair of pairs) {
         await tx.mentoringPair.update({
@@ -53,7 +72,12 @@ export const POST = protectedRoute(async (req: NextRequest) => {
       return {
         success: true,
         count: pairs.length,
-        message: "Ready for acceptance by both participants.",
+        emailPairs: pairs.map((p) => ({
+          mentor: p.mentor,
+          mentee: p.mentee,
+          matchScore: p.matchScore,
+        })),
+        message: `Pairing invitation emails sent to Mentor & Mentee (${pairs.length} relationship(s)).`,
       };
     }
     if (
@@ -94,5 +118,31 @@ export const POST = protectedRoute(async (req: NextRequest) => {
       );
     throw new AccessError(400, "Invalid action.");
   });
+  const emailPairs =
+    "emailPairs" in result && Array.isArray(result.emailPairs)
+      ? result.emailPairs
+      : [];
+  for (const ep of emailPairs) {
+    try {
+      await sendPairingProposalEmail({
+        to: ep.mentee.email,
+        name: ep.mentee.name,
+        counterpartName: ep.mentor.name,
+        counterpartRole: "MENTOR",
+        matchScore: ep.matchScore,
+        customAppUrl: appOrigin,
+      });
+      await sendPairingProposalEmail({
+        to: ep.mentor.email,
+        name: ep.mentor.name,
+        counterpartName: ep.mentee.name,
+        counterpartRole: "MENTEE",
+        matchScore: ep.matchScore,
+        customAppUrl: appOrigin,
+      });
+    } catch (mailErr) {
+      console.error("Failed to send pairing proposal email:", mailErr);
+    }
+  }
   return NextResponse.json(result);
 });

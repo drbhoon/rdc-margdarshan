@@ -285,6 +285,66 @@ export default function Dashboard() {
     }
   }
 
+  function openMailClientFallback(
+    recipients: Array<{
+      employeeCode: string;
+      name: string;
+      email: string;
+      role: string;
+    }>,
+  ) {
+    if (!recipients.length || typeof window === "undefined") return;
+    const origin = window.location.origin;
+
+    if (recipients.length === 1) {
+      const rec = recipients[0];
+      const roleLabel =
+        rec.role === "MENTOR"
+          ? "Leader / Manager (Mentor)"
+          : "Young Engineer (Mentee)";
+      const onboardingUrl = `${origin}/onboarding?emp=${encodeURIComponent(rec.employeeCode)}`;
+      const loginUrl = `${origin}/login?emp=${encodeURIComponent(rec.employeeCode)}`;
+      const subject = `[Margdarshan] You Have Been Added as ${rec.role === "MENTOR" ? "a Mentor" : "a Mentee"} — Login & Complete Your Profile`;
+      const body = [
+        `Dear ${rec.name},`,
+        "",
+        `You have been added to the Margdarshan 12-Week Mentoring Program as a ${roleLabel} (Employee ID: ${rec.employeeCode}).`,
+        "",
+        "Please click the link below to log in and complete your mentoring profile:",
+        onboardingUrl,
+        "",
+        `Standard portal login page: ${loginUrl}`,
+        "",
+        "Regards,",
+        "Margdarshan Mentoring Platform",
+        "RDC Concrete (India) Limited",
+      ].join("\r\n");
+
+      window.location.href = `mailto:${encodeURIComponent(rec.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      return;
+    }
+
+    copyAllLinks();
+    const bccList = recipients.map((r) => r.email).join(",");
+    const loginUrl = `${origin}/login`;
+    const subject =
+      "[Margdarshan] You Have Been Added as a Mentor / Mentee — Login & Complete Your Profile";
+    const body = [
+      "Dear Colleague,",
+      "",
+      "You have been added to the RDC Margdarshan 12-Week Mentoring Program as a Mentor or Mentee.",
+      "",
+      "Please sign in using your verified corporate Google account (@rdc.in or @ultrafine.in) to complete your mentoring profile and DISC reflection:",
+      loginUrl,
+      "",
+      "Regards,",
+      "Margdarshan Mentoring Platform",
+      "RDC Concrete (India) Limited",
+    ].join("\r\n");
+
+    window.location.href = `mailto:?bcc=${encodeURIComponent(bccList)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
   async function broadcastInvites(employeeCodes?: string[]) {
     if (employeeCodes && employeeCodes.length === 1) {
       setSendingInviteCode(employeeCodes[0]);
@@ -305,6 +365,17 @@ export default function Dashboard() {
       const json = await res.json();
       if (!res.ok)
         throw new Error(json.error || "Failed to broadcast invitations.");
+
+      const needsMailtoFallback =
+        ((json.simulatedCount ?? 0) > 0 && (json.sentCount ?? 0) === 0) ||
+        (Array.isArray(json.errors) &&
+          json.errors.length > 0 &&
+          (json.sentCount ?? 0) === 0);
+
+      if (needsMailtoFallback && Array.isArray(json.recipients)) {
+        openMailClientFallback(json.recipients);
+      }
+
       setMessage(
         json.message ||
           "Broadcast complete: Invitations & login links dispatched.",
@@ -962,10 +1033,35 @@ export default function Dashboard() {
               </section>
 
               <section className="card">
-                <h2>
-                  Pending invitations (
-                  {pairs.filter((p) => p.status !== "ACTIVE").length})
-                </h2>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "1rem",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  <h2 style={{ margin: 0 }}>
+                    Pending invitations (
+                    {pairs.filter((p) => p.status !== "ACTIVE").length})
+                  </h2>
+                  {pairs.some((p) => p.status === "PROPOSED") && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void send("/api/admin/pair", {
+                          action: "CONFIRM_ALL",
+                        })
+                      }
+                    >
+                      <Mail size={16} />
+                      <span>Send All Pending Invitations</span>
+                    </button>
+                  )}
+                </div>
                 {pairs.filter((p) => p.status !== "ACTIVE").length === 0 ? (
                   <p className="muted">
                     No pending proposals. All pairings are currently active or
@@ -989,12 +1085,41 @@ export default function Dashboard() {
                             <strong>Mentor:</strong> {p.mentor.name} (#
                             {p.mentor.employeeCode})
                           </p>
-                          <Link
-                            href={"/space/" + p.id}
-                            className="button secondary"
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "0.5rem",
+                              flexWrap: "wrap",
+                            }}
                           >
-                            View Space →
-                          </Link>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              style={{
+                                padding: "0.4rem 0.75rem",
+                                fontSize: "0.8rem",
+                              }}
+                              onClick={() =>
+                                void send("/api/admin/pair", {
+                                  action: "CONFIRM_PAIR",
+                                  pairId: p.id,
+                                })
+                              }
+                            >
+                              <Mail size={14} />
+                              <span>Send Invite to Mentor &amp; Mentee</span>
+                            </button>
+                            <Link
+                              href={"/space/" + p.id}
+                              className="button secondary"
+                              style={{
+                                padding: "0.4rem 0.75rem",
+                                fontSize: "0.8rem",
+                              }}
+                            >
+                              View Space →
+                            </Link>
+                          </div>
                         </div>
                       ))}
                   </div>

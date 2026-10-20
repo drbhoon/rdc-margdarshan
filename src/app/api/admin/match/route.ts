@@ -5,6 +5,7 @@ import { protectedRoute, logChange } from "@/lib/access";
 import { createPair, lockMatching, openStatuses } from "@/lib/pairing";
 import { calculateMatchScore } from "@/lib/competencies";
 import { getHarmonyAdvice } from "@/lib/disc-guide";
+import { sendPairingProposalEmail } from "@/lib/email";
 
 export const GET = protectedRoute(async (_req: NextRequest) => {
   const mentees = await prisma.employee.findMany({
@@ -199,9 +200,33 @@ export const POST = protectedRoute(async (req: NextRequest) => {
     { timeout: 30000 },
   );
 
+  const appOrigin = req.nextUrl.origin;
+  for (const p of result.pairsCreatedList) {
+    try {
+      await sendPairingProposalEmail({
+        to: p.mentee.email,
+        name: p.mentee.name,
+        counterpartName: p.mentor.name,
+        counterpartRole: "MENTOR",
+        matchScore: p.matchScore,
+        customAppUrl: appOrigin,
+      });
+      await sendPairingProposalEmail({
+        to: p.mentor.email,
+        name: p.mentor.name,
+        counterpartName: p.mentee.name,
+        counterpartRole: "MENTEE",
+        matchScore: p.matchScore,
+        customAppUrl: appOrigin,
+      });
+    } catch (mailErr) {
+      console.error("Failed to dispatch match proposal email:", mailErr);
+    }
+  }
+
   let message = "";
   if (result.pairsCreatedList.length > 0) {
-    message = `Created ${result.pairsCreatedList.length} draft mentoring proposal(s) for administrator review.`;
+    message = `Created ${result.pairsCreatedList.length} mentoring proposal(s) and dispatched invitation emails to Mentors and Mentees.`;
     if (result.totalUnmatched > 0) {
       message += ` (${result.totalUnmatched} mentee(s) remain unmatched due to mentor capacity).`;
     }

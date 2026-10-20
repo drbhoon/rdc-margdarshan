@@ -43,34 +43,79 @@ export const POST = protectedRoute(async (req: NextRequest) => {
 
     const appOrigin = req.nextUrl.origin;
     let sentCount = 0;
+    let simulatedCount = 0;
+    const errors: string[] = [];
 
     for (const c of candidates) {
       try {
-        await sendCandidateInviteEmail({
+        const res = await sendCandidateInviteEmail({
           to: c.email,
           name: c.name,
           role: c.role === "MENTOR" ? "MENTOR" : "MENTEE",
           employeeCode: c.employeeCode,
           customAppUrl: appOrigin,
         });
-        sentCount++;
+        if (res.simulated) {
+          simulatedCount++;
+        } else {
+          sentCount++;
+        }
       } catch (mailErr) {
         console.error(`Failed to send invite email to ${c.email}:`, mailErr);
+        errors.push(
+          `${c.email}: ${mailErr instanceof Error ? mailErr.message : "SMTP error"}`,
+        );
       }
     }
 
     await logChange(prisma, user, "BROADCAST_INVITES", {
       sentCount,
+      simulatedCount,
+      errors,
       targetCodes: targetCodes ?? "ALL",
     });
 
+    const recipients = candidates.map((c) => ({
+      employeeCode: c.employeeCode,
+      name: c.name,
+      email: c.email,
+      role: c.role,
+    }));
+
+    if (errors.length > 0 && sentCount === 0) {
+      return NextResponse.json({
+        success: false,
+        sentCount,
+        simulatedCount,
+        errors,
+        recipients,
+        message: `SMTP delivery failed (${errors[0]}). Opening your default email client so you can send the invitation directly.`,
+      });
+    }
+
+    if (simulatedCount > 0 && sentCount === 0) {
+      return NextResponse.json({
+        success: true,
+        sentCount,
+        simulatedCount,
+        recipients,
+        message:
+          candidates.length === 1 && candidates[0]
+            ? `SMTP is not configured on the server yet — opening your email client with a pre-filled invitation & login link for ${candidates[0].name} (${candidates[0].email}).`
+            : `SMTP is not configured on the server yet — opening your email client and copying all ${candidates.length} personalized login links.`,
+      });
+    }
+
     return NextResponse.json({
       success: true,
+      sentCount,
+      simulatedCount,
+      recipients,
       count: sentCount,
       message:
         sentCount === 1 && candidates[0]
-          ? `Invitation & login link sent to ${candidates[0].name} (${candidates[0].role}) at ${candidates[0].email}.`
-          : `Broadcast complete: Program invitations with personalized login links sent to ${sentCount} Mentor/Mentee employee(s).`,
+          ? `Invitation & login link emailed to ${candidates[0].name} (${candidates[0].role}) at ${candidates[0].email}.`
+          : `Broadcast complete: Program invitations with personalized login links emailed to ${sentCount} Mentor/Mentee employee(s).`,
     });
   }
 

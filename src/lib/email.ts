@@ -1,27 +1,74 @@
 import nodemailer from 'nodemailer';
 
-const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASS;
-const SMTP_SECURE = process.env.SMTP_SECURE === 'true';
-const EMAIL_FROM = process.env.EMAIL_FROM || '"Margdarshan Mentoring" <noreply@rdc.in>';
-const APP_URL = process.env.NEXTAUTH_URL || process.env.APP_URL || 'http://localhost:3000';
+function cleanEnv(key: string): string | undefined {
+  const val = process.env[key]?.trim();
+  return val ? val : undefined;
+}
+
+function getAppUrl(): string {
+  return (
+    cleanEnv('NEXTAUTH_URL') ||
+    cleanEnv('APP_URL') ||
+    'http://localhost:3000'
+  );
+}
+
+function getEmailFrom(): string {
+  const explicitFrom = cleanEnv('EMAIL_FROM') || cleanEnv('SMTP_FROM');
+  if (explicitFrom) return explicitFrom;
+  const smtpUser = cleanEnv('SMTP_USER');
+  if (smtpUser && smtpUser.includes('@')) {
+    return `"Margdarshan Mentoring" <${smtpUser}>`;
+  }
+  return '"Margdarshan Mentoring" <noreply@rdc.in>';
+}
 
 function getTransporter() {
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+  const host = cleanEnv('SMTP_HOST');
+  const user = cleanEnv('SMTP_USER');
+  const pass = cleanEnv('SMTP_PASS') || cleanEnv('SMTP_PASSWORD');
+  const port = parseInt(cleanEnv('SMTP_PORT') || '587', 10);
+  const secure =
+    cleanEnv('SMTP_SECURE') === 'true' || port === 465;
+
+  if (!host || !user || !pass) {
     return null;
   }
 
   return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
+    host,
+    port,
+    secure,
     auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
+      user,
+      pass,
     },
   });
+}
+
+async function deliverMail({
+  to,
+  subject,
+  html,
+  label,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+  label: string;
+}): Promise<{ sent: boolean; simulated: boolean; to: string }> {
+  const transporter = getTransporter();
+  if (transporter) {
+    await transporter.sendMail({
+      from: getEmailFrom(),
+      to,
+      subject,
+      html,
+    });
+    return { sent: true, simulated: false, to };
+  }
+  console.log(`[SMTP SIMULATION] ${label} -> ${to}`);
+  return { sent: false, simulated: true, to };
 }
 
 /**
@@ -40,7 +87,7 @@ export async function sendCandidateInviteEmail({
   employeeCode: string;
   customAppUrl?: string;
 }) {
-  const baseUrl = customAppUrl || APP_URL;
+  const baseUrl = customAppUrl || getAppUrl();
   const onboardingUrl = `${baseUrl}/onboarding?emp=${encodeURIComponent(employeeCode)}`;
   const loginUrl = `${baseUrl}/login?emp=${encodeURIComponent(employeeCode)}`;
   const roleLabel = role === 'MENTEE' ? 'Young Engineer (Mentee)' : 'Leader / Manager (Mentor)';
@@ -86,18 +133,12 @@ export async function sendCandidateInviteEmail({
     </div>
   `;
 
-  const transporter = getTransporter();
-  if (transporter) {
-    return transporter.sendMail({
-      from: EMAIL_FROM,
-      to,
-      subject,
-      html,
-    });
-  } else {
-    console.log(`[SMTP SIMULATION] Sent Candidate Invite Email to ${to} (${name}) with link: ${onboardingUrl}`);
-    return { simulated: true, to, name };
-  }
+  return deliverMail({
+    to,
+    subject,
+    html,
+    label: `Candidate Invite Email (${name})`,
+  });
 }
 
 /**
@@ -118,7 +159,7 @@ export async function sendPairingProposalEmail({
   matchScore: number;
   customAppUrl?: string;
 }) {
-  const baseUrl = customAppUrl || APP_URL;
+  const baseUrl = customAppUrl || getAppUrl();
   const dashboardUrl = `${baseUrl}/dashboard`;
   const scorePercent = (matchScore * 100).toFixed(0);
 
@@ -151,18 +192,12 @@ export async function sendPairingProposalEmail({
     </div>
   `;
 
-  const transporter = getTransporter();
-  if (transporter) {
-    return transporter.sendMail({
-      from: EMAIL_FROM,
-      to,
-      subject,
-      html,
-    });
-  } else {
-    console.log(`[SMTP SIMULATION] Sent Pairing Proposal Email to ${to} (${name}) paired with ${counterpartName}`);
-    return { simulated: true, to, name };
-  }
+  return deliverMail({
+    to,
+    subject,
+    html,
+    label: `Pairing Proposal Email (${name} <-> ${counterpartName})`,
+  });
 }
 
 /**
@@ -191,7 +226,7 @@ export async function sendSessionScheduledEmail({
   pairId: string;
   customAppUrl?: string;
 }) {
-  const baseUrl = customAppUrl || APP_URL;
+  const baseUrl = customAppUrl || getAppUrl();
   const workspaceUrl = `${baseUrl}/space/${encodeURIComponent(pairId)}`;
 
   const formattedTime = scheduledTime
@@ -271,18 +306,12 @@ export async function sendSessionScheduledEmail({
     </div>
   `;
 
-  const transporter = getTransporter();
-  if (transporter) {
-    return transporter.sendMail({
-      from: EMAIL_FROM,
-      to,
-      subject,
-      html,
-    });
-  } else {
-    console.log(`[SMTP SIMULATION] Sent Session Scheduled Email to ${to} (${name}) for Week ${weekNumber}`);
-    return { simulated: true, to, name };
-  }
+  return deliverMail({
+    to,
+    subject,
+    html,
+    label: `Session Scheduled Email (${name}, Week ${weekNumber})`,
+  });
 }
 
 /**
@@ -309,7 +338,7 @@ export async function sendSessionCompletedFeedbackEmail({
   pairId: string;
   customAppUrl?: string;
 }) {
-  const baseUrl = customAppUrl || APP_URL;
+  const baseUrl = customAppUrl || getAppUrl();
   const workspaceUrl = `${baseUrl}/space/${encodeURIComponent(pairId)}`;
 
   const subject = `[Margdarshan] Week ${weekNumber} Session Completed - Summary & Feedback Request`;
@@ -364,17 +393,11 @@ export async function sendSessionCompletedFeedbackEmail({
     </div>
   `;
 
-  const transporter = getTransporter();
-  if (transporter) {
-    return transporter.sendMail({
-      from: EMAIL_FROM,
-      to,
-      subject,
-      html,
-    });
-  } else {
-    console.log(`[SMTP SIMULATION] Sent Post-Session Feedback Email to ${to} (${name}) for Week ${weekNumber}`);
-    return { simulated: true, to, name };
-  }
+  return deliverMail({
+    to,
+    subject,
+    html,
+    label: `Post-Session Feedback Email (${name}, Week ${weekNumber})`,
+  });
 }
 
