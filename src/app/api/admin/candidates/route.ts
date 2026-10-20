@@ -8,6 +8,8 @@ import {
   textValue,
   logChange,
 } from "@/lib/access";
+import { sendCandidateInviteEmail } from "@/lib/email";
+
 export const GET = protectedRoute(async (_req: NextRequest) => {
   const employees = await prisma.employee.findMany({
     omit: { googleSubject: true },
@@ -17,9 +19,61 @@ export const GET = protectedRoute(async (_req: NextRequest) => {
     employees: employees.map((e) => ({ ...e, role: effectiveRole(e) })),
   });
 });
+
 export const POST = protectedRoute(async (req: NextRequest) => {
   const user = (await getSession())!;
   const body = await req.json();
+
+  if (body.action === "BROADCAST_INVITES") {
+    const targetCodes: string[] | undefined = Array.isArray(body.employeeCodes)
+      ? body.employeeCodes.map((c: unknown) => String(c).trim()).filter(Boolean)
+      : body.employeeCode
+        ? [String(body.employeeCode).trim()]
+        : undefined;
+
+    const candidates = await prisma.employee.findMany({
+      where: {
+        role: { in: ["MENTEE", "MENTOR"] },
+        ...(targetCodes && targetCodes.length > 0
+          ? { employeeCode: { in: targetCodes } }
+          : {}),
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const appOrigin = req.nextUrl.origin;
+    let sentCount = 0;
+
+    for (const c of candidates) {
+      try {
+        await sendCandidateInviteEmail({
+          to: c.email,
+          name: c.name,
+          role: c.role === "MENTOR" ? "MENTOR" : "MENTEE",
+          employeeCode: c.employeeCode,
+          customAppUrl: appOrigin,
+        });
+        sentCount++;
+      } catch (mailErr) {
+        console.error(`Failed to send invite email to ${c.email}:`, mailErr);
+      }
+    }
+
+    await logChange(prisma, user, "BROADCAST_INVITES", {
+      sentCount,
+      targetCodes: targetCodes ?? "ALL",
+    });
+
+    return NextResponse.json({
+      success: true,
+      count: sentCount,
+      message:
+        sentCount === 1 && candidates[0]
+          ? `Invitation & login link sent to ${candidates[0].name} (${candidates[0].role}) at ${candidates[0].email}.`
+          : `Broadcast complete: Program invitations with personalized login links sent to ${sentCount} Mentor/Mentee employee(s).`,
+    });
+  }
+
   if (body.action === "RESET_DATABASE")
     throw new AccessError(
       410,
@@ -111,10 +165,43 @@ export const POST = protectedRoute(async (req: NextRequest) => {
     },
     { timeout: 30000 },
   );
+  const shouldSendInvite =
+    body.sendInvite === "on" || body.sendInvite === true || body.sendInvite === "true";
+  const appOrigin = req.nextUrl.origin;
+  let invitedCount = 0;
+
+  if (shouldSendInvite) {
+    for (const savedEmp of result) {
+      if (savedEmp.role === "MENTEE" || savedEmp.role === "MENTOR") {
+        try {
+          await sendCandidateInviteEmail({
+            to: savedEmp.email,
+            name: savedEmp.name,
+            role: savedEmp.role,
+            employeeCode: savedEmp.employeeCode,
+            customAppUrl: appOrigin,
+          });
+          invitedCount++;
+        } catch (mailErr) {
+          console.error(
+            `Failed to send invite email to ${savedEmp.email}:`,
+            mailErr,
+          );
+        }
+      }
+    }
+  }
+
   return NextResponse.json({
     success: true,
     count: result.length,
     candidates: result,
     candidate: result[0],
+    message:
+      invitedCount > 0 && result[0]
+        ? `Saved ${result[0].name} (${result[0].role}) and sent welcome invitation with login link to ${result[0].email}.`
+        : result[0]
+          ? `Saved ${result[0].name} (${result[0].role}) in employee roster.`
+          : "Saved successfully.",
   });
 });

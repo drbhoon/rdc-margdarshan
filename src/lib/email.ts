@@ -42,37 +42,40 @@ export async function sendCandidateInviteEmail({
 }) {
   const baseUrl = customAppUrl || APP_URL;
   const onboardingUrl = `${baseUrl}/onboarding?emp=${encodeURIComponent(employeeCode)}`;
+  const loginUrl = `${baseUrl}/login?emp=${encodeURIComponent(employeeCode)}`;
   const roleLabel = role === 'MENTEE' ? 'Young Engineer (Mentee)' : 'Leader / Manager (Mentor)';
 
-  const subject = `[Margdarshan] Invitation to Join the 3-Month Mentoring Program - Action Required`;
+  const subject = `[Margdarshan] You Have Been Added as ${role === 'MENTEE' ? 'a Mentee' : 'a Mentor'} — Login & Complete Your Profile`;
   const html = `
-    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 8px;">
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
       <div style="background-color: #0f172a; padding: 16px; border-radius: 6px; text-align: center; margin-bottom: 20px;">
         <h2 style="color: #ffffff; margin: 0; font-size: 20px; letter-spacing: 0.5px;">Margdarshan Mentoring Platform</h2>
-        <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 12px;">Corporate Engineering Development</p>
+        <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 12px;">RDC Concrete (India) Limited</p>
       </div>
 
       <p>Dear <strong>${name}</strong>,</p>
 
-      <p>You have been nominated to participate in the upcoming <strong>3-Month Mentoring Program</strong> as a <strong>${roleLabel}</strong> (Employee ID: <code>${employeeCode}</code>).</p>
+      <p>You have been added to the <strong>Margdarshan 12-Week Mentoring Program</strong> as a <strong>${roleLabel}</strong> (Employee ID: <code>${employeeCode}</code>).</p>
 
       <div style="background-color: #f8fafc; border-left: 4px solid #0f172a; padding: 12px 16px; margin: 20px 0; border-radius: 4px;">
-        <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #0f172a;">Next Steps:</p>
+        <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #0f172a;">Getting Started:</p>
         <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #334155;">
-          <li>Review and select your primary <strong>Competency Framework</strong> focus areas.</li>
-          <li>Choose personal growth & real-world plant mastery challenges.</li>
-          <li>Complete the quick 4-question <strong>DISC Behavioral Assessment</strong>.</li>
+          <li>Use the link below to sign in to the Margdarshan portal.</li>
+          <li>Review and select your primary <strong>Competency Framework</strong> focus areas and career goals.</li>
+          <li>Complete the quick 5-question <strong>DISC Behavioral Reflection</strong>.</li>
         </ol>
       </div>
 
       <div style="text-align: center; margin: 30px 0;">
         <a href="${onboardingUrl}" style="background-color: #0f172a; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
-          Complete Your Mentoring Profile &rarr;
+          Login &amp; Open My Mentoring Profile &rarr;
         </a>
       </div>
 
-      <p style="font-size: 12px; color: #64748b;">If the button above does not work, copy and paste this link into your browser:<br/>
-        <a href="${onboardingUrl}" style="color: #2563eb;">${onboardingUrl}</a>
+      <p style="font-size: 12px; color: #64748b;">
+        Direct personalized login link:<br/>
+        <a href="${onboardingUrl}" style="color: #2563eb;">${onboardingUrl}</a><br/>
+        Standard portal login page: <a href="${loginUrl}" style="color: #2563eb;">${loginUrl}</a>
       </p>
 
       <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />

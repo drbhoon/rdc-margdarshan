@@ -27,6 +27,10 @@ import {
   PlayCircle,
   FolderArchive,
   X,
+  Mail,
+  Copy,
+  Check,
+  ExternalLink,
 } from "lucide-react";
 
 type Employee = {
@@ -113,6 +117,13 @@ export default function Dashboard() {
     null,
   );
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
+  const [broadcastRoleFilter, setBroadcastRoleFilter] = useState<string>("ALL");
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+  const [sendingInviteCode, setSendingInviteCode] = useState<string | null>(
+    null,
+  );
   const [detailModal, setDetailModal] = useState<{
     type:
       | "incomplete"
@@ -237,6 +248,82 @@ export default function Dashboard() {
     }
   }
 
+  function getCandidateLink(employeeCode: string) {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}/onboarding?emp=${encodeURIComponent(
+        employeeCode,
+      )}`;
+    }
+    return `/onboarding?emp=${encodeURIComponent(employeeCode)}`;
+  }
+
+  function copyToClipboard(text: string, codeId: string) {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(text);
+      setCopiedCode(codeId);
+      setTimeout(() => setCopiedCode(null), 2500);
+    }
+  }
+
+  function copyAllLinks() {
+    const candidatesList = (data?.allEmployees ?? []).filter(
+      (e) => e.role === "MENTEE" || e.role === "MENTOR",
+    );
+    if (!candidatesList.length) return;
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "";
+    const text = candidatesList
+      .map(
+        (emp) =>
+          `[${emp.role}] ${emp.name} (ID: ${emp.employeeCode}) - ${emp.email}\nYou have been added as a ${emp.role} on the RDC Margdarshan Mentoring Platform.\nLogin & Complete Profile Link: ${origin}/onboarding?emp=${encodeURIComponent(emp.employeeCode)}`,
+      )
+      .join("\n\n");
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(text);
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 2500);
+    }
+  }
+
+  async function broadcastInvites(employeeCodes?: string[]) {
+    if (employeeCodes && employeeCodes.length === 1) {
+      setSendingInviteCode(employeeCodes[0]);
+    } else {
+      setBusy(true);
+    }
+    setError("");
+    setMessage("");
+    try {
+      const res = await fetch("/api/admin/candidates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "BROADCAST_INVITES",
+          ...(employeeCodes ? { employeeCodes } : {}),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok)
+        throw new Error(json.error || "Failed to broadcast invitations.");
+      setMessage(
+        json.message ||
+          "Broadcast complete: Invitations & login links dispatched.",
+      );
+      if (!employeeCodes) {
+        setIsBroadcastModalOpen(false);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to broadcast invitations.",
+      );
+    } finally {
+      setSendingInviteCode(null);
+      setBusy(false);
+    }
+  }
+
   if (loading || !user) {
     return <main className="container">Checking sign-in…</main>;
   }
@@ -347,12 +434,25 @@ export default function Dashboard() {
         title={admin ? "Administration" : `Hello, ${user.name.split(/\s+/)[0]}`}
         subtitle={
           admin
-            ? "Manage mentoring relationships, compatibility matching, employee roster, and programme progress."
+            ? "Manage mentoring relationships, broadcast employee onboarding invites & login links, compatibility matching, employee roster, and programme progress."
             : "Prepare, meet, agree practical site actions, and track your 12-week mentoring journey."
         }
       >
         <div className="hero-meta">
-          <Link className="button hero-button" href="/onboarding">
+          {admin && (
+            <button
+              type="button"
+              className="button hero-button"
+              onClick={() => setIsBroadcastModalOpen(true)}
+            >
+              <Mail size={16} />
+              <span>Broadcast Invites &amp; Links</span>
+            </button>
+          )}
+          <Link
+            className={`button ${admin ? "secondary" : "hero-button"}`}
+            href="/onboarding"
+          >
             My profile
           </Link>
           <Link className="button secondary" href="/resources">
@@ -635,11 +735,54 @@ export default function Dashboard() {
                     justifyContent: "space-between",
                     alignItems: "center",
                     gap: "1rem",
+                  }}
+                >
+                  <div>
+                    <h2>1. Broadcast Invites &amp; Personalized Login Links</h2>
+                    <p className="muted" style={{ margin: 0 }}>
+                      Notify employees that they have been added as a Mentor or
+                      Mentee with a direct personalized link to log in and
+                      complete their profile.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsBroadcastModalOpen(true)}
+                    >
+                      <Mail size={16} />
+                      <span>Open Broadcast &amp; Login Links</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => void broadcastInvites()}
+                    >
+                      <Mail size={16} />
+                      <span>
+                        {busy
+                          ? "Sending Emails…"
+                          : "Broadcast All Invites via Email"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="card">
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "1rem",
                     marginBottom: "1rem",
                   }}
                 >
                   <div>
-                    <h2>Compatibility recommendations</h2>
+                    <h2>2. Compatibility recommendations</h2>
                     <p className="muted" style={{ margin: 0 }}>
                       Compare shared interests, development needs, availability
                       and communication preferences.
@@ -995,7 +1138,45 @@ export default function Dashboard() {
           {activeTab === "roster" && (
             <div className="employees-layout">
               <section className="card">
-                <h2>Employee roster ({filteredRoster.length})</h2>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "1rem",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  <div>
+                    <h2 style={{ margin: 0 }}>
+                      Employee roster ({filteredRoster.length})
+                    </h2>
+                    <p className="muted" style={{ margin: "0.2rem 0 0" }}>
+                      Send personalized login &amp; onboarding invitations to
+                      Mentors and Mentees.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsBroadcastModalOpen(true)}
+                    >
+                      <Mail size={16} />
+                      <span>Broadcast Invites &amp; Login Links</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={copyAllLinks}
+                    >
+                      <Copy size={16} />
+                      <span>
+                        {copiedAll ? "✓ All Links Copied!" : "Copy All Links"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
                 <div className="employee-search">
                   <input
                     type="search"
@@ -1042,70 +1223,133 @@ export default function Dashboard() {
                         <th>Department &amp; Designation</th>
                         <th>Qualification &amp; Location</th>
                         <th>Capacity</th>
+                        <th>Invite &amp; Login Link</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredRoster.map((e) => (
-                        <tr key={e.employeeCode}>
-                          <td>
-                            <div className="person">
-                              <span
-                                className="avatar"
-                                style={{ background: coverFor(e.name) }}
-                                aria-hidden="true"
-                              >
-                                {initialsOf(e.name)}
-                              </span>
-                              <div>
-                                <strong>{e.name}</strong>
-                                <br />
-                                <span className="muted">
-                                  {e.employeeCode} · {e.email}
+                      {filteredRoster.map((e) => {
+                        const candidateUrl = getCandidateLink(e.employeeCode);
+                        const isCopied = copiedCode === e.employeeCode;
+                        const isSending = sendingInviteCode === e.employeeCode;
+                        return (
+                          <tr key={e.employeeCode}>
+                            <td>
+                              <div className="person">
+                                <span
+                                  className="avatar"
+                                  style={{ background: coverFor(e.name) }}
+                                  aria-hidden="true"
+                                >
+                                  {initialsOf(e.name)}
                                 </span>
+                                <div>
+                                  <strong>{e.name}</strong>
+                                  <br />
+                                  <span className="muted">
+                                    {e.employeeCode} · {e.email}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td>
-                            <span
-                              className={`status-pill${
-                                e.role === "MENTOR"
-                                  ? " status-completed"
-                                  : " status-in_progress"
-                              }`}
-                            >
-                              {e.role}
-                            </span>
-                            {e.discStyle && (
-                              <>
-                                {" "}
-                                <span className="badge">DISC {e.discStyle}</span>
-                              </>
-                            )}
-                          </td>
-                          <td>
-                            <strong>{e.designation}</strong>
-                            <br />
-                            <span className="muted">{e.department}</span>
-                          </td>
-                          <td>
-                            {e.highestQualification || "—"}
-                            {e.location && (
-                              <>
-                                <br />
-                                <span className="muted">📍 {e.location}</span>
-                              </>
-                            )}
-                          </td>
-                          <td>
-                            {e.role === "MENTOR"
-                              ? `${e.mentorCapacity} mentees`
-                              : "—"}
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td>
+                              <span
+                                className={`status-pill${
+                                  e.role === "MENTOR"
+                                    ? " status-completed"
+                                    : " status-in_progress"
+                                }`}
+                              >
+                                {e.role}
+                              </span>
+                              {e.discStyle && (
+                                <>
+                                  {" "}
+                                  <span className="badge">
+                                    DISC {e.discStyle}
+                                  </span>
+                                </>
+                              )}
+                            </td>
+                            <td>
+                              <strong>{e.designation}</strong>
+                              <br />
+                              <span className="muted">{e.department}</span>
+                            </td>
+                            <td>
+                              {e.highestQualification || "—"}
+                              {e.location && (
+                                <>
+                                  <br />
+                                  <span className="muted">📍 {e.location}</span>
+                                </>
+                              )}
+                            </td>
+                            <td>
+                              {e.role === "MENTOR"
+                                ? `${e.mentorCapacity} mentees`
+                                : "—"}
+                            </td>
+                            <td>
+                              {e.role === "MENTOR" || e.role === "MENTEE" ? (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: "0.35rem",
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    className="secondary"
+                                    style={{
+                                      padding: "0.35rem 0.6rem",
+                                      fontSize: "0.75rem",
+                                    }}
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        candidateUrl,
+                                        e.employeeCode,
+                                      )
+                                    }
+                                    title={candidateUrl}
+                                  >
+                                    {isCopied ? (
+                                      <Check size={13} />
+                                    ) : (
+                                      <Copy size={13} />
+                                    )}
+                                    <span>
+                                      {isCopied ? "Copied!" : "Copy Link"}
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    style={{
+                                      padding: "0.35rem 0.65rem",
+                                      fontSize: "0.75rem",
+                                    }}
+                                    disabled={isSending || busy}
+                                    onClick={() =>
+                                      void broadcastInvites([e.employeeCode])
+                                    }
+                                    title={`Send email invitation with login link to ${e.email}`}
+                                  >
+                                    <Mail size={13} />
+                                    <span>
+                                      {isSending ? "Sending…" : "Send Invite"}
+                                    </span>
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="muted">Admin</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                       {!filteredRoster.length && (
                         <tr>
-                          <td colSpan={5}>
+                          <td colSpan={6}>
                             No employees match the current search.
                           </td>
                         </tr>
@@ -1208,8 +1452,24 @@ export default function Dashboard() {
                         />
                       </label>
                     </div>
+                    <div style={{ marginTop: "0.85rem" }}>
+                      <label className="checkbox">
+                        <input
+                          type="checkbox"
+                          name="sendInvite"
+                          defaultChecked
+                        />
+                        <span>
+                          Automatically send welcome broadcast email informing
+                          the employee they have been added as Mentor/Mentee
+                          with a direct link to log in
+                        </span>
+                      </label>
+                    </div>
                     <div style={{ marginTop: "1rem" }}>
-                      <button type="submit">Save employee record</button>
+                      <button type="submit">
+                        Save employee &amp; send invite
+                      </button>
                     </div>
                   </fieldset>
                 </form>
@@ -1406,6 +1666,281 @@ export default function Dashboard() {
               </div>
             </section>
           )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* BROADCAST INVITES & PERSONALIZED LOGIN LINKS MODAL                        */}
+      {/* ========================================================================= */}
+      {isBroadcastModalOpen && (
+        <div
+          className="sheet-backdrop"
+          style={{
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+          onClick={() => setIsBroadcastModalOpen(false)}
+        >
+          <div
+            className="card"
+            style={{
+              width: "min(760px, 100%)",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              margin: 0,
+            }}
+            role="dialog"
+            aria-label="Broadcast Invites and Personalized Login Links"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                borderBottom: "1px solid var(--line)",
+                paddingBottom: "0.75rem",
+                marginBottom: "1rem",
+              }}
+            >
+              <div>
+                <h2 style={{ margin: 0 }}>
+                  Broadcast Invites &amp; Personalized Login Links
+                </h2>
+                <p className="muted" style={{ margin: "0.2rem 0 0" }}>
+                  Inform employees that they have been added as a Mentor or
+                  Mentee with a direct link to log in and complete their profile.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Close"
+                onClick={() => setIsBroadcastModalOpen(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div
+              className="record"
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "0.75rem",
+                marginBottom: "1rem",
+              }}
+            >
+              <div className="chips" role="group" aria-label="Filter role">
+                {["ALL", "MENTEE", "MENTOR"].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    className={`chip${
+                      broadcastRoleFilter === r ? " chip-active" : ""
+                    }`}
+                    onClick={() => setBroadcastRoleFilter(r)}
+                  >
+                    {r === "ALL"
+                      ? "All Candidates"
+                      : r === "MENTEE"
+                        ? "Mentees Only"
+                        : "Mentors Only"}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="secondary"
+                onClick={copyAllLinks}
+                disabled={
+                  !roster.some(
+                    (e) => e.role === "MENTEE" || e.role === "MENTOR",
+                  )
+                }
+              >
+                <Copy size={15} />
+                <span>
+                  {copiedAll ? "✓ All Links Copied!" : "📋 Copy All Links"}
+                </span>
+              </button>
+            </div>
+
+            <div
+              className="form"
+              style={{ maxHeight: "48vh", overflowY: "auto" }}
+            >
+              {roster
+                .filter(
+                  (e) =>
+                    (e.role === "MENTEE" || e.role === "MENTOR") &&
+                    (broadcastRoleFilter === "ALL" ||
+                      e.role === broadcastRoleFilter),
+                )
+                .map((emp) => {
+                  const candidateUrl = getCandidateLink(emp.employeeCode);
+                  const isCopied = copiedCode === emp.employeeCode;
+                  const isSending = sendingInviteCode === emp.employeeCode;
+                  return (
+                    <div
+                      key={emp.employeeCode}
+                      className="record"
+                      style={{
+                        margin: 0,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <strong>{emp.name}</strong>
+                          <span
+                            className={`status-pill ${
+                              emp.role === "MENTOR"
+                                ? "status-completed"
+                                : "status-in_progress"
+                            }`}
+                          >
+                            {emp.role}
+                          </span>
+                          <span className="muted">#{emp.employeeCode}</span>
+                        </div>
+                        <div className="muted" style={{ fontSize: "0.8rem" }}>
+                          {emp.email} · {emp.designation}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "0.78rem",
+                            color: "var(--indigo)",
+                            fontFamily: "monospace",
+                            wordBreak: "break-all",
+                            marginTop: "0.2rem",
+                          }}
+                        >
+                          {candidateUrl}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "0.4rem",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="secondary"
+                          style={{
+                            padding: "0.4rem 0.7rem",
+                            fontSize: "0.78rem",
+                          }}
+                          onClick={() =>
+                            copyToClipboard(candidateUrl, emp.employeeCode)
+                          }
+                        >
+                          {isCopied ? <Check size={14} /> : <Copy size={14} />}
+                          <span>{isCopied ? "Copied!" : "Copy Link"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          style={{
+                            padding: "0.4rem 0.7rem",
+                            fontSize: "0.78rem",
+                          }}
+                          disabled={isSending || busy}
+                          onClick={() =>
+                            void broadcastInvites([emp.employeeCode])
+                          }
+                        >
+                          <Mail size={14} />
+                          <span>{isSending ? "Sending…" : "Send Email"}</span>
+                        </button>
+                        <a
+                          href={candidateUrl}
+                          className="button secondary"
+                          style={{
+                            padding: "0.4rem 0.7rem",
+                            fontSize: "0.78rem",
+                          }}
+                        >
+                          <span>Open</span>
+                          <ExternalLink size={14} />
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: "1rem",
+                borderTop: "1px solid var(--line)",
+                paddingTop: "1rem",
+                marginTop: "1rem",
+              }}
+            >
+              <span className="muted">
+                {
+                  roster.filter(
+                    (e) =>
+                      (e.role === "MENTEE" || e.role === "MENTOR") &&
+                      (broadcastRoleFilter === "ALL" ||
+                        e.role === broadcastRoleFilter),
+                  ).length
+                }{" "}
+                candidate link(s) ready
+              </span>
+              <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => setIsBroadcastModalOpen(false)}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    const targetCodes =
+                      broadcastRoleFilter === "ALL"
+                        ? undefined
+                        : roster
+                            .filter((e) => e.role === broadcastRoleFilter)
+                            .map((e) => e.employeeCode);
+                    void broadcastInvites(targetCodes);
+                  }}
+                >
+                  <Mail size={16} />
+                  <span>
+                    {busy
+                      ? "Sending Emails…"
+                      : broadcastRoleFilter === "ALL"
+                        ? "Send All Invites via noreply@rdc.in"
+                        : `Send to All ${broadcastRoleFilter}S via noreply@rdc.in`}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

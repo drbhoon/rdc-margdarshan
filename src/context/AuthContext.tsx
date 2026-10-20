@@ -61,7 +61,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refreshAllUsers]);
   useEffect(() => {
-    void refreshUser().catch(() => setLoading(false));
+    async function init() {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const empParam =
+          params.get("emp") || params.get("code") || params.get("employeeCode");
+        if (empParam) {
+          try {
+            await fetch("/api/auth/demo-login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ employeeCode: empParam }),
+            });
+          } catch {
+            // Ignore and fall through to refreshUser
+          }
+        }
+      }
+      await refreshUser().catch(() => setLoading(false));
+    }
+    void init();
   }, [refreshUser]);
   useEffect(() => {
     if (!loading && !user && pathname !== "/login") router.replace("/login");

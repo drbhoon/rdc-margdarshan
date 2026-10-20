@@ -14,21 +14,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Employee code required." }, { status: 400 });
     }
 
-    const target = DEMO_ACCOUNTS.find((a) => a.employeeCode === employeeCode);
-    if (!target) {
-      return NextResponse.json(
-        { error: "Demo persona not recognized." },
-        { status: 404 }
-      );
-    }
-
-    // Seed only after the requested code has been validated. This keeps a new
-    // proof-of-concept environment immediately explorable.
-    await ensureDemoData();
-
-    const employee = await prisma.employee.findUnique({
-      where: { employeeCode: target.employeeCode },
+    const cleanCode = employeeCode.trim();
+    let employee = await prisma.employee.findUnique({
+      where: { employeeCode: cleanCode },
     });
+
+    if (!employee) {
+      const target = DEMO_ACCOUNTS.find((a) => a.employeeCode === cleanCode);
+      if (target) {
+        await ensureDemoData();
+        employee = await prisma.employee.findUnique({
+          where: { employeeCode: target.employeeCode },
+        });
+      }
+    }
 
     if (!employee) {
       return NextResponse.json(
