@@ -13,7 +13,6 @@ import { sendPairingProposalEmail } from "@/lib/email";
 export const POST = protectedRoute(async (req: NextRequest) => {
   const user = (await getSession())!;
   const body = await req.json();
-  const appOrigin = req.nextUrl.origin;
   const result = await prisma.$transaction(async (tx) => {
     await lockMatching(tx);
     if (body.action === "PREVIEW_SCORE") {
@@ -130,7 +129,6 @@ export const POST = protectedRoute(async (req: NextRequest) => {
         counterpartName: ep.mentor.name,
         counterpartRole: "MENTOR",
         matchScore: ep.matchScore,
-        customAppUrl: appOrigin,
       });
       await sendPairingProposalEmail({
         to: ep.mentor.email,
@@ -138,7 +136,6 @@ export const POST = protectedRoute(async (req: NextRequest) => {
         counterpartName: ep.mentee.name,
         counterpartRole: "MENTEE",
         matchScore: ep.matchScore,
-        customAppUrl: appOrigin,
       });
     } catch (mailErr) {
       console.error("Failed to send pairing proposal email:", mailErr);

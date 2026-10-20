@@ -5,11 +5,36 @@ function cleanEnv(key: string): string | undefined {
   return val ? val : undefined;
 }
 
-function getAppUrl(): string {
+function normalizePublicUrl(raw?: string): string | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  const withProtocol = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (
+      parsed.hostname === 'localhost' ||
+      parsed.hostname === '127.0.0.1' ||
+      parsed.hostname === '0.0.0.0' ||
+      parsed.hostname.endsWith('.internal')
+    ) {
+      return null;
+    }
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+export function getAppUrl(customAppUrl?: string): string {
   return (
-    cleanEnv('NEXTAUTH_URL') ||
-    cleanEnv('APP_URL') ||
-    'http://localhost:3000'
+    normalizePublicUrl(cleanEnv('APP_URL')) ||
+    normalizePublicUrl(cleanEnv('NEXTAUTH_URL')) ||
+    normalizePublicUrl(cleanEnv('RAILWAY_PUBLIC_DOMAIN')) ||
+    normalizePublicUrl(cleanEnv('RAILWAY_STATIC_URL')) ||
+    normalizePublicUrl(customAppUrl) ||
+    'https://rdc-margdarshan-production.up.railway.app'
   );
 }
 
@@ -90,7 +115,7 @@ export async function sendCandidateInviteEmail({
   employeeCode: string;
   customAppUrl?: string;
 }) {
-  const baseUrl = customAppUrl || getAppUrl();
+  const baseUrl = getAppUrl(customAppUrl);
   const onboardingUrl = `${baseUrl}/onboarding?emp=${encodeURIComponent(employeeCode)}`;
   const loginUrl = `${baseUrl}/login?emp=${encodeURIComponent(employeeCode)}`;
   const roleLabel = role === 'MENTEE' ? 'Young Engineer (Mentee)' : 'Leader / Manager (Mentor)';
@@ -162,7 +187,7 @@ export async function sendPairingProposalEmail({
   matchScore: number;
   customAppUrl?: string;
 }) {
-  const baseUrl = customAppUrl || getAppUrl();
+  const baseUrl = getAppUrl(customAppUrl);
   const dashboardUrl = `${baseUrl}/dashboard`;
   const scorePercent = (matchScore * 100).toFixed(0);
 
@@ -229,7 +254,7 @@ export async function sendSessionScheduledEmail({
   pairId: string;
   customAppUrl?: string;
 }) {
-  const baseUrl = customAppUrl || getAppUrl();
+  const baseUrl = getAppUrl(customAppUrl);
   const workspaceUrl = `${baseUrl}/space/${encodeURIComponent(pairId)}`;
 
   const formattedTime = scheduledTime
@@ -341,7 +366,7 @@ export async function sendSessionCompletedFeedbackEmail({
   pairId: string;
   customAppUrl?: string;
 }) {
-  const baseUrl = customAppUrl || getAppUrl();
+  const baseUrl = getAppUrl(customAppUrl);
   const workspaceUrl = `${baseUrl}/space/${encodeURIComponent(pairId)}`;
 
   const subject = `[Margdarshan] Week ${weekNumber} Session Completed - Summary & Feedback Request`;

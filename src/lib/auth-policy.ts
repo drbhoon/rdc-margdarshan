@@ -64,8 +64,13 @@ export function validGoogleIdentity(
   );
 }
 export function appOrigin(): string {
-  if (!process.env.APP_URL) throw new Error("APP_URL is required");
-  const url = new URL(process.env.APP_URL);
+  const raw =
+    process.env.APP_URL?.trim() ||
+    process.env.NEXTAUTH_URL?.trim() ||
+    process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+  if (!raw) throw new Error("APP_URL is required");
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  const url = new URL(withProtocol);
   if (
     url.username ||
     url.password ||

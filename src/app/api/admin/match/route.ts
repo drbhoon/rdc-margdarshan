@@ -200,7 +200,6 @@ export const POST = protectedRoute(async (req: NextRequest) => {
     { timeout: 30000 },
   );
 
-  const appOrigin = req.nextUrl.origin;
   for (const p of result.pairsCreatedList) {
     try {
       await sendPairingProposalEmail({
@@ -209,7 +208,6 @@ export const POST = protectedRoute(async (req: NextRequest) => {
         counterpartName: p.mentor.name,
         counterpartRole: "MENTOR",
         matchScore: p.matchScore,
-        customAppUrl: appOrigin,
       });
       await sendPairingProposalEmail({
         to: p.mentor.email,
@@ -217,7 +215,6 @@ export const POST = protectedRoute(async (req: NextRequest) => {
         counterpartName: p.mentee.name,
         counterpartRole: "MENTEE",
         matchScore: p.matchScore,
-        customAppUrl: appOrigin,
       });
     } catch (mailErr) {
       console.error("Failed to dispatch match proposal email:", mailErr);

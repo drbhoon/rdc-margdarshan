@@ -41,7 +41,6 @@ export const POST = protectedRoute(async (req: NextRequest) => {
       orderBy: { name: "asc" },
     });
 
-    const appOrigin = req.nextUrl.origin;
     let sentCount = 0;
     let simulatedCount = 0;
     const errors: string[] = [];
@@ -53,7 +52,6 @@ export const POST = protectedRoute(async (req: NextRequest) => {
           name: c.name,
           role: c.role === "MENTOR" ? "MENTOR" : "MENTEE",
           employeeCode: c.employeeCode,
-          customAppUrl: appOrigin,
         });
         if (res.simulated) {
           simulatedCount++;
@@ -212,7 +210,6 @@ export const POST = protectedRoute(async (req: NextRequest) => {
   );
   const shouldSendInvite =
     body.sendInvite === "on" || body.sendInvite === true || body.sendInvite === "true";
-  const appOrigin = req.nextUrl.origin;
   let invitedCount = 0;
 
   if (shouldSendInvite) {
@@ -224,7 +221,6 @@ export const POST = protectedRoute(async (req: NextRequest) => {
             name: savedEmp.name,
             role: savedEmp.role,
             employeeCode: savedEmp.employeeCode,
-            customAppUrl: appOrigin,
           });
           invitedCount++;
         } catch (mailErr) {
