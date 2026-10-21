@@ -26,7 +26,6 @@ export async function getSession(): Promise<UserSession | null> {
     !stored ||
     stored.expiresAt <= new Date() ||
     !stored.employee.isActive ||
-    !stored.employee.googleSubject ||
     !corporateEmail(stored.employee.email)
   )
     return null;

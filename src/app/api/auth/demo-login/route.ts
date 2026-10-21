@@ -15,8 +15,13 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanCode = employeeCode.trim();
-    let employee = await prisma.employee.findUnique({
-      where: { employeeCode: cleanCode },
+    let employee = await prisma.employee.findFirst({
+      where: {
+        OR: [
+          { employeeCode: { equals: cleanCode, mode: "insensitive" } },
+          { email: { equals: cleanCode, mode: "insensitive" } },
+        ],
+      },
     });
 
     if (!employee) {

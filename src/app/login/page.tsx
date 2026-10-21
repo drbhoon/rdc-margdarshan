@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
-import { Shield } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { Shield, Mail } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 const personas = [
@@ -37,9 +37,35 @@ const personas = [
 ] as const;
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, refreshUser } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [identifier, setIdentifier] = useState("");
+
+  async function handleDirectSignIn(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!identifier.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: identifier.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Sign-in failed.");
+        setBusy(false);
+        return;
+      }
+      await refreshUser();
+      window.location.assign("/dashboard");
+    } catch {
+      setError("Network error. Please try again.");
+      setBusy(false);
+    }
+  }
 
   async function demoSignIn(code: string) {
     setBusy(true);
@@ -95,8 +121,45 @@ export default function LoginPage() {
 
           {error && <p className="message error">{error}</p>}
 
-          <div className="form" style={{ marginTop: "1rem" }}>
-            <a href="/api/auth/google" className="button">
+          <form
+            onSubmit={(e) => void handleDirectSignIn(e)}
+            className="form"
+            style={{ marginTop: "1rem" }}
+          >
+            <label>
+              Corporate Email (<code>@rdc.in</code> / <code>@ultrafine.in</code>) or Employee ID
+              <input
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="e.g. saif@ultrafine.in, name@rdc.in, or S00642"
+                required
+                disabled={busy}
+              />
+            </label>
+            <button type="submit" disabled={busy}>
+              <Mail size={16} />
+              <span>{busy ? "Signing in…" : "Sign in with Corporate Email / ID"}</span>
+            </button>
+          </form>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              margin: "1rem 0",
+              color: "var(--muted)",
+              fontSize: "0.8rem",
+            }}
+          >
+            <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+            <span>or</span>
+            <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+          </div>
+
+          <div className="form">
+            <a href="/api/auth/google" className="button secondary">
               <svg
                 width="18"
                 height="18"

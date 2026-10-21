@@ -84,6 +84,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshUser]);
   useEffect(() => {
     if (!loading && !user && pathname !== "/login") router.replace("/login");
+    if (!loading && user && pathname === "/login") {
+      const params =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search)
+          : null;
+      const hasEmpParam = Boolean(
+        params?.get("emp") || params?.get("code") || params?.get("employeeCode"),
+      );
+      router.replace(hasEmpParam ? "/onboarding" : "/dashboard");
+    }
   }, [loading, user, pathname, router]);
   const logout = async () => {
     const r = await fetch("/api/auth/logout", {
