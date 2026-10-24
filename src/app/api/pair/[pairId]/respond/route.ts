@@ -18,16 +18,20 @@ export const POST = protectedRoute(
       throw new AccessError(400, "Invalid response.");
     const result = await pairWrite(pairId, user, async (tx, pair) => {
       const mentor = pair.mentorCode === user.employeeCode,
-        mentee = pair.menteeCode === user.employeeCode;
-      if (!mentor && !mentee)
-        throw new AccessError(403, "Only the mentor and mentee can respond.");
-      if (!["PENDING_ACCEPTANCE", "ACCEPTED"].includes(pair.status))
+        mentee = pair.menteeCode === user.employeeCode,
+        isAdmin = user.role === "ADMIN";
+      if (!mentor && !mentee && !isAdmin)
+        throw new AccessError(403, "Only the mentor, mentee, or administrator can respond.");
+      if (!["PROPOSED", "PENDING_ACCEPTANCE", "ACCEPTED"].includes(pair.status))
         throw new AccessError(
           409,
           "This invitation is no longer awaiting acceptance.",
         );
-      const mentorAcceptedAt = mentor ? new Date() : pair.mentorAcceptedAt;
-      const menteeAcceptedAt = mentee ? new Date() : pair.menteeAcceptedAt;
+      const now = new Date();
+      const mentorAcceptedAt =
+        mentor || isAdmin ? pair.mentorAcceptedAt ?? now : pair.mentorAcceptedAt;
+      const menteeAcceptedAt =
+        mentee || isAdmin ? pair.menteeAcceptedAt ?? now : pair.menteeAcceptedAt;
       const status =
         body.action === "DECLINE"
           ? "DECLINED"

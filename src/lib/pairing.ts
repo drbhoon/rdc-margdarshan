@@ -65,7 +65,7 @@ export async function createPair(
       cohortId: cohort.id,
       mentorCode,
       menteeCode,
-      status: "PROPOSED",
+      status: "PENDING_ACCEPTANCE",
       matchScore: calculateMatchScore(mentor, mentee),
     },
   });

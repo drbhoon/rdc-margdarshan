@@ -47,7 +47,7 @@ export const POST = protectedRoute(async (req: NextRequest) => {
             : [],
         message:
           mentor && mentee
-            ? `Created pairing proposal (${mentee.name} & ${mentor.name}) and sent invitation emails.`
+            ? `Created pairing proposal (Mentor: ${mentor.name} & Mentee: ${mentee.name}) and sent invitation emails.`
             : "Created pairing proposal.",
       };
     }

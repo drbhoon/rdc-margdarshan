@@ -6,15 +6,16 @@ import { ensureDemoData, DEMO_ACCOUNTS } from "@/lib/demo-data";
 
 export async function POST(req: NextRequest) {
   try {
-    if (process.env.DEMO_MODE === "false") {
-      return NextResponse.json({ error: "Demo access is disabled." }, { status: 404 });
-    }
     const { employeeCode } = await req.json();
     if (!employeeCode || typeof employeeCode !== "string") {
       return NextResponse.json({ error: "Employee code required." }, { status: 400 });
     }
 
     const cleanCode = employeeCode.trim();
+    const isSyntheticDemo = DEMO_ACCOUNTS.some((a) => a.employeeCode === cleanCode);
+    if (isSyntheticDemo && process.env.DEMO_MODE === "false") {
+      return NextResponse.json({ error: "Demo access is disabled." }, { status: 404 });
+    }
     let employee = await prisma.employee.findFirst({
       where: {
         OR: [

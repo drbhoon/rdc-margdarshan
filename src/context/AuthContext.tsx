@@ -68,11 +68,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           params.get("emp") || params.get("code") || params.get("employeeCode");
         if (empParam) {
           try {
-            await fetch("/api/auth/demo-login", {
+            const loginRes = await fetch("/api/auth/login", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ employeeCode: empParam }),
+              body: JSON.stringify({ identifier: empParam }),
             });
+            if (!loginRes.ok) {
+              await fetch("/api/auth/demo-login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ employeeCode: empParam }),
+              });
+            }
           } catch {
             // Ignore and fall through to refreshUser
           }

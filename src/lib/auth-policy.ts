@@ -1,9 +1,17 @@
 export const CORPORATE_DOMAIN = "rdc.in";
-export const CORPORATE_DOMAINS = ["rdc.in", "ultrafine.in"] as const;
+export const CORPORATE_DOMAINS = [
+  "rdc.in",
+  "ultrafine.in",
+  "ultrafine.co.in",
+  "ultrafineminerals.com",
+  "rdcconcrete.com",
+] as const;
 export function corporateEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const email = value.trim().toLowerCase();
-  return /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(rdc|ultrafine)\.in$/.test(email)
+  return /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(rdc\.in|ultrafine\.in|ultrafine\.co\.in|ultrafineminerals\.com|rdcconcrete\.com)$/.test(
+    email,
+  )
     ? email
     : null;
 }

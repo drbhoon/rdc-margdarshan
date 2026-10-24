@@ -95,6 +95,8 @@ type Pair = {
   mentee: Person;
   mentorCode: string;
   menteeCode: string;
+  mentorAcceptedAt?: string | null;
+  menteeAcceptedAt?: string | null;
   isOffRecord: boolean;
   resumeMentor: boolean;
   resumeMentee: boolean;
@@ -167,14 +169,21 @@ function SessionEditor({
   const [base, setBase] = useState(record);
   const [dirty, setDirty] = useState(false);
   const [showEmbeddedMeeting, setShowEmbeddedMeeting] = useState(false);
+  const [videoServerHost, setVideoServerHost] = useState("https://meet.ffmuc.net");
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionDraft, setTranscriptionDraft] = useState(record.transcriptionNotes || "");
+  const [copiedTranscript, setCopiedTranscript] = useState(false);
   const recognitionRef = useRef<any>(null);
 
   const [confirmMenteeSubmit, setConfirmMenteeSubmit] = useState(false);
   const [confirmMentorSubmit, setConfirmMentorSubmit] = useState(false);
   const [menteeQaError, setMenteeQaError] = useState<string | null>(null);
   const [mentorQaError, setMentorQaError] = useState<string | null>(null);
+  const [editorFeedback, setEditorFeedback] = useState<{
+    section: "status" | "logistics" | "mentee" | "mentor" | "minutes";
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   const isMentor = userCode === pair.mentorCode || userRole === "ADMIN";
   const isMentee = userCode === pair.menteeCode;
@@ -194,6 +203,9 @@ function SessionEditor({
       record.postSessionReflectionMentor?.trim(),
   );
 
+  const isMenteeBoxLocked = !isMentee || isMenteeQaRecorded;
+  const isMentorBoxLocked = !isMenteeQaRecorded || isMentorQaRecorded;
+
   if (!dirty && base.version !== record.version) {
     setBase(record);
     setTranscriptionDraft(record.transcriptionNotes || "");
@@ -207,12 +219,13 @@ function SessionEditor({
   }, [base, dirty, record.transcriptionNotes]);
 
   // Handle Speech-to-Text Auto-Transcription
-  const toggleSpeechRecognition = () => {
+  const toggleSpeechRecognition = async () => {
     if (isTranscribing) {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
       setIsTranscribing(false);
+      await saveLogisticsAndMinutes(undefined, "minutes");
       return;
     }
 
@@ -266,6 +279,38 @@ function SessionEditor({
     }
   };
 
+  const downloadTranscriptFile = () => {
+    const content = [
+      `Margdarshan Mentoring Platform — Session Record & Transcript`,
+      `Mentor: ${pair.mentor.name} (#${pair.mentorCode})`,
+      `Mentee: ${pair.mentee.name} (#${pair.menteeCode})`,
+      `Week: Week ${record.weekNumber} (${themes[record.weekNumber] || ""})`,
+      `Exported: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST`,
+      `------------------------------------------------------------`,
+      ``,
+      `LIVE MEETING MINUTES & DECISIONS:`,
+      record.meetingNotes || "(None recorded)",
+      ``,
+      `SPEECH TRANSCRIPTION:`,
+      transcriptionDraft || record.transcriptionNotes || "(No transcription text recorded)",
+    ].join("\r\n");
+
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Margdarshan-Week-${record.weekNumber}-Transcript.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setEditorFeedback({
+      section: "minutes",
+      type: "success",
+      text: `✓ Downloaded "Margdarshan-Week-${record.weekNumber}-Transcript.txt" to your device's Downloads folder!`,
+    });
+  };
+
   // 1-Click Toggle Session Status
   const toggleSessionCompletion = async () => {
     const nextStatus = record.status === "COMPLETED" ? "SCHEDULED" : "COMPLETED";
@@ -276,6 +321,17 @@ function SessionEditor({
     if (await send("/session/" + record.id, "PUT", payload)) {
       setDirty(false);
       dirtyChanged(record.id, false);
+      setEditorFeedback({
+        section: "status",
+        type: "success",
+        text: `✓ Saved Confirmation: Week ${record.weekNumber} status updated to ${nextStatus}!`,
+      });
+    } else {
+      setEditorFeedback({
+        section: "status",
+        type: "error",
+        text: "⚠️ Could not update session status. Please retry.",
+      });
     }
   };
 
@@ -290,7 +346,7 @@ function SessionEditor({
   ];
 
   const requestMenteeSubmit = () => {
-    if (!form.current || isMenteeQaRecorded) return;
+    if (!form.current || isMenteeBoxLocked) return;
     const data = new FormData(form.current);
     for (const [key, label] of menteeFieldList) {
       const val = String(data.get(key) ?? "").trim();
@@ -310,7 +366,7 @@ function SessionEditor({
   };
 
   const executeMenteeSubmit = async () => {
-    if (!form.current || isMenteeQaRecorded) return;
+    if (!form.current || isMenteeBoxLocked) return;
     const data = new FormData(form.current);
     const payload: Record<string, unknown> = { version: record.version };
     for (const [key] of menteeFieldList) {
@@ -321,11 +377,22 @@ function SessionEditor({
       setMenteeQaError(null);
       setDirty(false);
       dirtyChanged(record.id, false);
+      setEditorFeedback({
+        section: "mentee",
+        type: "success",
+        text: "✓ Saved Confirmation: Your Mentee Q&A preparation & answers have been permanently recorded! / आपके उत्तर सफलतापूर्वक सहेजे गए।",
+      });
+    } else {
+      setEditorFeedback({
+        section: "mentee",
+        type: "error",
+        text: "⚠️ Failed to save Mentee Q&A. Please check your connection and try again.",
+      });
     }
   };
 
   const requestMentorSubmit = () => {
-    if (!form.current || isMentorQaRecorded) return;
+    if (!form.current || isMentorBoxLocked) return;
     const data = new FormData(form.current);
     const comments = String(data.get("mentorComments") ?? "").trim();
     const reflection = String(data.get("postSessionReflectionMentor") ?? "").trim();
@@ -348,7 +415,7 @@ function SessionEditor({
   };
 
   const executeMentorSubmit = async () => {
-    if (!form.current || isMentorQaRecorded) return;
+    if (!form.current || isMentorBoxLocked) return;
     const data = new FormData(form.current);
     const payload: Record<string, unknown> = {
       version: record.version,
@@ -362,10 +429,24 @@ function SessionEditor({
       setMentorQaError(null);
       setDirty(false);
       dirtyChanged(record.id, false);
+      setEditorFeedback({
+        section: "mentor",
+        type: "success",
+        text: "✓ Saved Confirmation: Your Mentor feedback, guidance & reflection have been permanently recorded! / आपका मार्गदर्शन सफलतापूर्वक सहेजा गया।",
+      });
+    } else {
+      setEditorFeedback({
+        section: "mentor",
+        type: "error",
+        text: "⚠️ Failed to save Mentor feedback. Please try again.",
+      });
     }
   };
 
-  async function saveLogisticsAndMinutes(e?: FormEvent<HTMLFormElement>) {
+  async function saveLogisticsAndMinutes(
+    e?: FormEvent<HTMLFormElement>,
+    targetSection: "logistics" | "minutes" = "logistics",
+  ) {
     if (e) e.preventDefault();
     if (!form.current) return;
     const data = new FormData(form.current);
@@ -387,11 +468,26 @@ function SessionEditor({
     if (await send("/session/" + record.id, "PUT", payload)) {
       setDirty(false);
       dirtyChanged(record.id, false);
+      setEditorFeedback({
+        section: targetSection,
+        type: "success",
+        text:
+          targetSection === "minutes"
+            ? `✓ Saved Confirmation: Meeting minutes & speech transcription saved in Week ${record.weekNumber} Session Record!`
+            : `✓ Saved Confirmation: Meeting time, video call link & logistics saved for Week ${record.weekNumber}!`,
+      });
+    } else {
+      setEditorFeedback({
+        section: targetSection,
+        type: "error",
+        text: "⚠️ Unable to save changes. Please check the fields and try again.",
+      });
     }
   }
 
-  // Pre-configured embedded meeting room identifier
-  const embeddedRoomUrl = `https://meet.jit.si/Margdarshan-Pair-${pair.id}-Week${record.weekNumber}#config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(
+  // Unrestricted community Jitsi server (meet.ffmuc.net / jitsi.riot.im) — avoids 8x8's 5-minute embedded iframe cutoff on meet.jit.si
+  const roomName = `Margdarshan-Pair-${pair.id}-Week${record.weekNumber}`;
+  const embeddedRoomUrl = `${videoServerHost}/${roomName}#config.prejoinPageEnabled=false&config.disableDeepLinking=true&userInfo.displayName=${encodeURIComponent(
     isMentor ? pair.mentor.name : pair.mentee.name,
   )}`;
 
@@ -482,6 +578,26 @@ function SessionEditor({
               : "✓ Mark Week as Completed / सत्र पूर्ण हुआ"}
           </button>
         </div>
+        {editorFeedback?.section === "status" && (
+          <div
+            role="status"
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              borderRadius: 8,
+              backgroundColor:
+                editorFeedback.type === "error" ? "#fef2f2" : "#dcfce7",
+              border: `1px solid ${
+                editorFeedback.type === "error" ? "#fecaca" : "#86efac"
+              }`,
+              color: editorFeedback.type === "error" ? "#b91c1c" : "#166534",
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            {editorFeedback.text}
+          </div>
+        )}
       </div>
 
       <fieldset disabled={blocked} className="space-y-6">
@@ -531,7 +647,7 @@ function SessionEditor({
                   color: "#fff",
                 }}
               >
-                📹 Launch Google Meet (New Window)
+                📹 Launch Video Call (New Window)
               </a>
             )}
 
@@ -547,8 +663,27 @@ function SessionEditor({
                 gap: 6,
               }}
             >
-              🖥️ {showEmbeddedMeeting ? "Hide Embedded Video Room" : "Open In-Portal Embedded Meeting"}
+              🖥️{" "}
+              {showEmbeddedMeeting
+                ? "Hide Embedded Video Room"
+                : "Open In-Portal Embedded Meeting (Unlimited Time)"}
             </button>
+
+            <a
+              href={`${videoServerHost}/${roomName}#config.prejoinPageEnabled=false`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="button secondary"
+              style={{
+                fontSize: 12,
+                padding: "6px 14px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              ↗ Open Video Room in Full Tab
+            </a>
 
             {!base.googleMeetLink && (
               <button
@@ -559,14 +694,14 @@ function SessionEditor({
                     'input[name="googleMeetLink"]',
                   );
                   if (input) {
-                    input.value = `https://meet.jit.si/Margdarshan-Pair-${pair.id}-Week${record.weekNumber}`;
+                    input.value = `https://meet.ffmuc.net/Margdarshan-Pair-${pair.id}-Week${record.weekNumber}`;
                     setDirty(true);
                     dirtyChanged(record.id, true);
                   }
                 }}
                 style={{ fontSize: 12, padding: "6px 14px" }}
               >
-                🔗 Auto-Generate Meeting Link
+                🔗 Auto-Generate Unlimited Meeting Link
               </button>
             )}
           </div>
@@ -588,32 +723,59 @@ function SessionEditor({
                   backgroundColor: "#0f172a",
                   color: "#f8fafc",
                   display: "flex",
+                  flexWrap: "wrap",
                   justifyContent: "space-between",
                   alignItems: "center",
+                  gap: 8,
                   fontSize: 12,
                 }}
               >
                 <span>
-                  🟢 Embedded Margdarshan Video Room (Week {record.weekNumber})
+                  🟢 Embedded Margdarshan Video Room (Week {record.weekNumber} · No 5-Min Limit)
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setShowEmbeddedMeeting(false)}
-                  style={{
-                    color: "#94a3b8",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: 12,
-                  }}
-                >
-                  ✕ Close Room
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <select
+                    value={videoServerHost}
+                    onChange={(e) => setVideoServerHost(e.target.value)}
+                    aria-label="Select video server"
+                    style={{
+                      backgroundColor: "#1e293b",
+                      color: "#f8fafc",
+                      border: "1px solid #475569",
+                      borderRadius: 6,
+                      padding: "2px 8px",
+                      fontSize: 11,
+                      minHeight: "auto",
+                    }}
+                  >
+                    <option value="https://meet.ffmuc.net">
+                      Server 1: meet.ffmuc.net (Unlimited)
+                    </option>
+                    <option value="https://jitsi.riot.im">
+                      Server 2: jitsi.riot.im (Unlimited Backup)
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmbeddedMeeting(false)}
+                    style={{
+                      color: "#94a3b8",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      padding: "2px 6px",
+                      minHeight: "auto",
+                    }}
+                  >
+                    ✕ Close Room
+                  </button>
+                </div>
               </div>
               <iframe
                 src={embeddedRoomUrl}
-                allow="camera; microphone; display-capture; autoplay; clipboard-write"
-                style={{ width: "100%", height: "460px", border: "none" }}
+                allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"
+                style={{ width: "100%", height: "480px", border: "none" }}
                 title="Margdarshan Embedded Video Conference"
               />
             </div>
@@ -662,12 +824,34 @@ function SessionEditor({
 
           <div style={{ marginTop: 12 }}>
             <button
-              type="submit"
+              type="button"
+              onClick={() => void saveLogisticsAndMinutes(undefined, "logistics")}
               className="secondary"
               style={{ fontSize: 12, padding: "6px 14px" }}
             >
               💾 Save Meeting Logistics
             </button>
+            {editorFeedback?.section === "logistics" && (
+              <div
+                role="status"
+                style={{
+                  marginTop: 8,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  backgroundColor:
+                    editorFeedback.type === "error" ? "#fef2f2" : "#dcfce7",
+                  border: `1px solid ${
+                    editorFeedback.type === "error" ? "#fecaca" : "#86efac"
+                  }`,
+                  color:
+                    editorFeedback.type === "error" ? "#b91c1c" : "#166534",
+                  fontWeight: 700,
+                  fontSize: 13,
+                }}
+              >
+                {editorFeedback.text}
+              </div>
+            )}
           </div>
         </section>
 
@@ -713,11 +897,11 @@ function SessionEditor({
                 ? "✓ Q&A Recorded"
                 : isMentee
                 ? "You (Mentee Author)"
-                : `${pair.mentee.name}'s Submission`}
+                : `${pair.mentee.name}'s Submission (Read-Only for Mentor)`}
             </span>
           </div>
 
-          {!isMenteeQaRecorded && (
+          {!isMenteeQaRecorded && isMentee && (
             <div
               style={{
                 padding: "8px 12px",
@@ -733,6 +917,23 @@ function SessionEditor({
             </div>
           )}
 
+          {!isMenteeQaRecorded && !isMentee && (
+            <div
+              style={{
+                padding: "10px 14px",
+                marginBottom: 14,
+                borderRadius: 8,
+                backgroundColor: "#fffbeb",
+                border: "1px solid #fde68a",
+                fontSize: 12,
+                color: "#92400e",
+                fontWeight: 600,
+              }}
+            >
+              🔒 <strong>Mentee Section (Read-Only for Mentor):</strong> Only Mentee (<strong>{pair.mentee.name}</strong>) can enter comments in these 7 boxes. Waiting for {pair.mentee.name} to submit their Q&amp;A responses for Week {record.weekNumber}.
+            </div>
+          )}
+
           <div className="space-y-4">
             <label>
               <span>
@@ -741,11 +942,15 @@ function SessionEditor({
               <textarea
                 name="agenda"
                 defaultValue={base.agenda ?? ""}
-                readOnly={isMenteeQaRecorded}
+                readOnly={isMenteeBoxLocked}
                 onChange={() => setMenteeQaError(null)}
-                placeholder="Key topics to cover in this session... (Mandatory — write NIL if not applicable)"
+                placeholder={
+                  isMentee
+                    ? "Key topics to cover in this session... (Mandatory — write NIL if not applicable)"
+                    : `Waiting for Mentee (${pair.mentee.name}) to enter Agenda...`
+                }
                 maxLength={20000}
-                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
+                style={isMenteeBoxLocked ? lockedTextareaStyle : undefined}
               />
             </label>
 
@@ -756,11 +961,15 @@ function SessionEditor({
               <textarea
                 name="preSessionNotes"
                 defaultValue={base.preSessionNotes ?? ""}
-                readOnly={isMenteeQaRecorded}
+                readOnly={isMenteeBoxLocked}
                 onChange={() => setMenteeQaError(null)}
-                placeholder="What have you studied, observed, or prepared before this discussion? (Mandatory — write NIL if not applicable)"
+                placeholder={
+                  isMentee
+                    ? "What have you studied, observed, or prepared before this discussion? (Mandatory — write NIL if not applicable)"
+                    : `Waiting for Mentee (${pair.mentee.name}) to enter Preparation notes...`
+                }
                 maxLength={20000}
-                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
+                style={isMenteeBoxLocked ? lockedTextareaStyle : undefined}
               />
             </label>
 
@@ -771,11 +980,15 @@ function SessionEditor({
               <textarea
                 name="discussionPoints"
                 defaultValue={base.discussionPoints ?? ""}
-                readOnly={isMenteeQaRecorded}
+                readOnly={isMenteeBoxLocked}
                 onChange={() => setMenteeQaError(null)}
-                placeholder="Key points and insights explored during the conversation... (Mandatory — write NIL if not applicable)"
+                placeholder={
+                  isMentee
+                    ? "Key points and insights explored during the conversation... (Mandatory — write NIL if not applicable)"
+                    : `Waiting for Mentee (${pair.mentee.name}) to enter Discussion Points...`
+                }
                 maxLength={20000}
-                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
+                style={isMenteeBoxLocked ? lockedTextareaStyle : undefined}
               />
             </label>
 
@@ -786,11 +999,15 @@ function SessionEditor({
               <textarea
                 name="insights"
                 defaultValue={base.insights ?? ""}
-                readOnly={isMenteeQaRecorded}
+                readOnly={isMenteeBoxLocked}
                 onChange={() => setMenteeQaError(null)}
-                placeholder="What was your biggest takeaway from this session? (Mandatory — write NIL if not applicable)"
+                placeholder={
+                  isMentee
+                    ? "What was your biggest takeaway from this session? (Mandatory — write NIL if not applicable)"
+                    : `Waiting for Mentee (${pair.mentee.name}) to enter Learning & Insights...`
+                }
                 maxLength={20000}
-                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
+                style={isMenteeBoxLocked ? lockedTextareaStyle : undefined}
               />
             </label>
 
@@ -801,11 +1018,15 @@ function SessionEditor({
               <textarea
                 name="commitments"
                 defaultValue={base.commitments ?? ""}
-                readOnly={isMenteeQaRecorded}
+                readOnly={isMenteeBoxLocked}
                 onChange={() => setMenteeQaError(null)}
-                placeholder="Specific actions you will take on the plant/site before the next week... (Mandatory — write NIL if not applicable)"
+                placeholder={
+                  isMentee
+                    ? "Specific actions you will take on the plant/site before the next week... (Mandatory — write NIL if not applicable)"
+                    : `Waiting for Mentee (${pair.mentee.name}) to enter Commitments...`
+                }
                 maxLength={20000}
-                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
+                style={isMenteeBoxLocked ? lockedTextareaStyle : undefined}
               />
             </label>
 
@@ -816,11 +1037,15 @@ function SessionEditor({
               <textarea
                 name="supportNeeded"
                 defaultValue={base.supportNeeded ?? ""}
-                readOnly={isMenteeQaRecorded}
+                readOnly={isMenteeBoxLocked}
                 onChange={() => setMenteeQaError(null)}
-                placeholder="Support, telemetry access, or coaching needed from mentor/leadership... (Mandatory — write NIL if not applicable)"
+                placeholder={
+                  isMentee
+                    ? "Support, telemetry access, or coaching needed from mentor/leadership... (Mandatory — write NIL if not applicable)"
+                    : `Waiting for Mentee (${pair.mentee.name}) to enter Support Needed...`
+                }
                 maxLength={20000}
-                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
+                style={isMenteeBoxLocked ? lockedTextareaStyle : undefined}
               />
             </label>
 
@@ -831,11 +1056,15 @@ function SessionEditor({
               <textarea
                 name="postSessionReflectionMentee"
                 defaultValue={base.postSessionReflectionMentee ?? ""}
-                readOnly={isMenteeQaRecorded}
+                readOnly={isMenteeBoxLocked}
                 onChange={() => setMenteeQaError(null)}
-                placeholder="Personal reflection on your progress and growth this week... (Mandatory — write NIL if not applicable)"
+                placeholder={
+                  isMentee
+                    ? "Personal reflection on your progress and growth this week... (Mandatory — write NIL if not applicable)"
+                    : `Waiting for Mentee (${pair.mentee.name}) to enter Mentee Reflection...`
+                }
                 maxLength={20000}
-                style={isMenteeQaRecorded ? lockedTextareaStyle : undefined}
+                style={isMenteeBoxLocked ? lockedTextareaStyle : undefined}
               />
             </label>
 
@@ -873,10 +1102,26 @@ function SessionEditor({
                   gap: 8,
                 }}
               >
-                <span>✓ Your Q&A are Recorded</span>
+                <span>✓ Mentee Q&A are Recorded</span>
                 <span style={{ fontSize: 12, fontWeight: 600, color: "#15803d" }}>
                   (No Editing Allowed)
                 </span>
+              </div>
+            ) : !isMentee ? (
+              <div
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  backgroundColor: "#f8fafc",
+                  border: "1px solid #cbd5e1",
+                  color: "#475569",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  textAlign: "center",
+                }}
+              >
+                ⏳ Waiting for Mentee ({pair.mentee.name}) to enter and submit their Q&amp;A responses.
               </div>
             ) : confirmMenteeSubmit ? (
               <div
@@ -943,6 +1188,27 @@ function SessionEditor({
                 💾 Save Preparation & Answers / उत्तर सहेजें
               </button>
             )}
+
+            {editorFeedback?.section === "mentee" && (
+              <div
+                role="status"
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  backgroundColor:
+                    editorFeedback.type === "error" ? "#fef2f2" : "#dcfce7",
+                  border: `1px solid ${
+                    editorFeedback.type === "error" ? "#fecaca" : "#86efac"
+                  }`,
+                  color:
+                    editorFeedback.type === "error" ? "#b91c1c" : "#166534",
+                  fontWeight: 700,
+                  fontSize: 13,
+                }}
+              >
+                {editorFeedback.text}
+              </div>
+            )}
           </div>
         </section>
 
@@ -981,26 +1247,46 @@ function SessionEditor({
                 fontWeight: 700,
               }}
             >
-              {isMentorQaRecorded ? "✓ Q&A Recorded" : "Mentor Review"}
+              {isMentorQaRecorded
+                ? "✓ Q&A Recorded"
+                : !isMenteeQaRecorded
+                  ? "🔒 Awaiting Mentee Q&A"
+                  : "Mentor Review"}
             </span>
           </div>
 
           {/* If Mentor: Rich Editor for Mentor Comments */}
           {isMentor ? (
             <div className="space-y-4">
-              {!isMentorQaRecorded && (
+              {!isMenteeQaRecorded ? (
                 <div
                   style={{
-                    padding: "8px 12px",
+                    padding: "10px 14px",
                     borderRadius: 8,
-                    backgroundColor: "#dcfce7",
-                    border: "1px solid #86efac",
-                    fontSize: 12,
-                    color: "#166534",
+                    backgroundColor: "#fffbeb",
+                    border: "1px solid #f59e0b",
+                    fontSize: 13,
+                    color: "#92400e",
+                    fontWeight: 600,
                   }}
                 >
-                  <strong>Mandatory Q&A:</strong> Both Mentor Q&A boxes below are mandatory to fill before saving. You may write <strong>NIL</strong> if not applicable. Once submitted, no editing is allowed.
+                  🔒 <strong>Waiting for Mentee Submission:</strong> Mentor comment boxes unlock once Mentee (<strong>{pair.mentee.name}</strong>) has entered and submitted their Q&amp;A responses above.
                 </div>
+              ) : (
+                !isMentorQaRecorded && (
+                  <div
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      backgroundColor: "#dcfce7",
+                      border: "1px solid #86efac",
+                      fontSize: 12,
+                      color: "#166534",
+                    }}
+                  >
+                    <strong>Mandatory Q&A:</strong> Both Mentor Q&A boxes below are mandatory to fill before saving. You may write <strong>NIL</strong> if not applicable. Once submitted, no editing is allowed.
+                  </div>
+                )
               )}
 
               <label>
@@ -1011,13 +1297,17 @@ function SessionEditor({
                 <textarea
                   name="mentorComments"
                   defaultValue={base.mentorComments ?? ""}
-                  readOnly={isMentorQaRecorded}
+                  readOnly={isMentorBoxLocked}
                   onChange={() => setMentorQaError(null)}
-                  placeholder="Share feedback on mentee's answers, praise for initiative, guidance on RDC plant operations, and agreed next steps... (Mandatory — write NIL if not applicable)"
+                  placeholder={
+                    !isMenteeQaRecorded
+                      ? `Unlocks after Mentee (${pair.mentee.name}) submits their Q&A comments above...`
+                      : "Share feedback on mentee's answers, praise for initiative, guidance on RDC plant operations, and agreed next steps... (Mandatory — write NIL if not applicable)"
+                  }
                   rows={4}
                   maxLength={20000}
                   style={
-                    isMentorQaRecorded
+                    isMentorBoxLocked
                       ? lockedTextareaStyle
                       : {
                           borderColor: "#86efac",
@@ -1036,13 +1326,17 @@ function SessionEditor({
                 <textarea
                   name="postSessionReflectionMentor"
                   defaultValue={base.postSessionReflectionMentor ?? ""}
-                  readOnly={isMentorQaRecorded}
+                  readOnly={isMentorBoxLocked}
                   onChange={() => setMentorQaError(null)}
-                  placeholder="Reflect on your coaching style, listening balance, and progress observed... (Mandatory — write NIL if not applicable)"
+                  placeholder={
+                    !isMenteeQaRecorded
+                      ? `Unlocks after Mentee (${pair.mentee.name}) submits their Q&A comments above...`
+                      : "Reflect on your coaching style, listening balance, and progress observed... (Mandatory — write NIL if not applicable)"
+                  }
                   rows={2}
                   maxLength={20000}
                   style={
-                    isMentorQaRecorded
+                    isMentorBoxLocked
                       ? lockedTextareaStyle
                       : {
                           borderColor: "#86efac",
@@ -1091,6 +1385,22 @@ function SessionEditor({
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#15803d" }}>
                     (No Editing Allowed)
                   </span>
+                </div>
+              ) : !isMenteeQaRecorded ? (
+                <div
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    backgroundColor: "#f8fafc",
+                    border: "1px solid #cbd5e1",
+                    color: "#475569",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    textAlign: "center",
+                  }}
+                >
+                  🔒 Mentor feedback submission will unlock once {pair.mentee.name} (Mentee) submits their Q&amp;A responses above.
                 </div>
               ) : confirmMentorSubmit ? (
                 <div
@@ -1157,6 +1467,27 @@ function SessionEditor({
                   💾 Save Mentor Feedback & Comments / मार्गदर्शन सहेजें
                 </button>
               )}
+
+              {editorFeedback?.section === "mentor" && (
+                <div
+                  role="status"
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    backgroundColor:
+                      editorFeedback.type === "error" ? "#fef2f2" : "#dcfce7",
+                    border: `1px solid ${
+                      editorFeedback.type === "error" ? "#fecaca" : "#86efac"
+                    }`,
+                    color:
+                      editorFeedback.type === "error" ? "#b91c1c" : "#166534",
+                    fontWeight: 700,
+                    fontSize: 13,
+                  }}
+                >
+                  {editorFeedback.text}
+                </div>
+              )}
             </div>
           ) : (
             /* If Mentee: High-Visibility View of Mentor's Feedback */
@@ -1222,8 +1553,10 @@ function SessionEditor({
           <div
             style={{
               display: "flex",
+              flexWrap: "wrap",
               justifyContent: "space-between",
               alignItems: "center",
+              gap: 10,
               marginBottom: 8,
             }}
           >
@@ -1232,12 +1565,12 @@ function SessionEditor({
                 In-Portal Meeting Minutes & Live Transcription
               </h3>
               <p className="muted" style={{ fontSize: 12, margin: "2px 0 0 0" }}>
-                Saved securely in the Margdarshan portal for both participants and admins.
+                Saved in <strong>Week {record.weekNumber} → Session Record → Saved Meeting Minutes &amp; Transcript</strong> (and downloadable as a <code>.txt</code> file).
               </p>
             </div>
             <button
               type="button"
-              onClick={toggleSpeechRecognition}
+              onClick={() => void toggleSpeechRecognition()}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -1252,8 +1585,24 @@ function SessionEditor({
                 cursor: "pointer",
               }}
             >
-              {isTranscribing ? "⏹️ Stop Voice Transcribe" : "🎙️ Start Auto-Transcribe"}
+              {isTranscribing
+                ? "⏹️ Stop & Auto-Save Voice Transcribe"
+                : "🎙️ Start Auto-Transcribe"}
             </button>
+          </div>
+
+          <div
+            style={{
+              padding: "8px 12px",
+              marginBottom: 10,
+              borderRadius: 8,
+              backgroundColor: "#eef2ff",
+              border: "1px solid #c7d2fe",
+              fontSize: 12,
+              color: "#3730a3",
+            }}
+          >
+            📍 <strong>Where Transcription is Saved:</strong> Spoken words appear live in the <strong>Speech Transcription</strong> box below. When you click <strong>⏹️ Stop &amp; Auto-Save</strong> or <strong>💾 Save Meeting Notes &amp; Transcription</strong>, it is saved directly in this <strong>Week {record.weekNumber} Session Record</strong> (shown in the <em>Saved Transcript Record</em> card below) and can also be downloaded to your computer/phone using <strong>⬇️ Download Transcript (.txt)</strong>.
           </div>
 
           {isTranscribing && (
@@ -1279,7 +1628,7 @@ function SessionEditor({
                   display: "inline-block",
                 }}
               />
-              Listening to speech via microphone... Transcribed text will appear below.
+              Listening to speech via microphone... Transcribed text is appearing in the Speech Transcription box below. Click &ldquo;Stop &amp; Auto-Save&rdquo; when finished.
             </div>
           )}
 
@@ -1311,15 +1660,104 @@ function SessionEditor({
             </label>
           </div>
 
-          <div style={{ marginTop: 10 }}>
+          <div
+            style={{
+              marginTop: 10,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+            }}
+          >
             <button
-              type="submit"
-              className="secondary"
+              type="button"
+              onClick={() => void saveLogisticsAndMinutes(undefined, "minutes")}
               style={{ fontSize: 12, padding: "6px 14px" }}
             >
-              💾 Save Meeting Notes & Transcription
+              💾 Save Meeting Notes &amp; Transcription
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={downloadTranscriptFile}
+              style={{ fontSize: 12, padding: "6px 14px" }}
+            >
+              ⬇️ Download Transcript (.txt)
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                if (typeof navigator !== "undefined" && navigator.clipboard) {
+                  void navigator.clipboard.writeText(
+                    transcriptionDraft || record.transcriptionNotes || "",
+                  );
+                  setCopiedTranscript(true);
+                  setTimeout(() => setCopiedTranscript(false), 2500);
+                }
+              }}
+              style={{ fontSize: 12, padding: "6px 14px" }}
+            >
+              {copiedTranscript ? "✓ Copied Transcript!" : "📋 Copy Transcript"}
             </button>
           </div>
+
+          {editorFeedback?.section === "minutes" && (
+            <div
+              role="status"
+              style={{
+                marginTop: 10,
+                padding: "8px 12px",
+                borderRadius: 8,
+                backgroundColor:
+                  editorFeedback.type === "error" ? "#fef2f2" : "#dcfce7",
+                border: `1px solid ${
+                  editorFeedback.type === "error" ? "#fecaca" : "#86efac"
+                }`,
+                color: editorFeedback.type === "error" ? "#b91c1c" : "#166534",
+                fontWeight: 700,
+                fontSize: 13,
+              }}
+            >
+              {editorFeedback.text}
+            </div>
+          )}
+
+          {(record.meetingNotes?.trim() || record.transcriptionNotes?.trim()) && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: "10px 14px",
+                borderRadius: 8,
+                backgroundColor: "#ffffff",
+                border: "1px solid #cbd5e1",
+              }}
+            >
+              <strong style={{ fontSize: 12, color: "#1e293b" }}>
+                📁 Saved Meeting Minutes &amp; Transcript Record (Week {record.weekNumber}):
+              </strong>
+              {record.meetingNotes?.trim() && (
+                <div style={{ marginTop: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>
+                    Saved Meeting Minutes:
+                  </span>
+                  <pre style={{ margin: "2px 0 0", fontSize: 12 }}>
+                    {record.meetingNotes}
+                  </pre>
+                </div>
+              )}
+              {record.transcriptionNotes?.trim() && (
+                <div style={{ marginTop: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>
+                    Saved Speech Transcription:
+                  </span>
+                  <pre style={{ margin: "2px 0 0", fontSize: 12 }}>
+                    {record.transcriptionNotes}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
         </section>
       </fieldset>
 
@@ -1348,27 +1786,27 @@ function SessionEditor({
         </div>
       )}
 
-      {/* Historical Reflections Accordion */}
+      {/* Historical Reflections Accordion (Mentor First, Then Mentee) */}
       <details className="record" style={{ marginTop: 16 }}>
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-          View saved reflections from both participants
+          View saved reflections from both participants ({pair.mentor.name} &amp; {pair.mentee.name})
         </summary>
         <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-          <div style={{ padding: 10, backgroundColor: "#f8fafc", borderRadius: 6 }}>
-            <strong style={{ fontSize: 12, color: "#64748b" }}>
-              {pair.mentee.name} (Mentee):
-            </strong>
-            <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "#1e293b" }}>
-              {record.postSessionReflectionMentee || "No reflection saved yet."}
-            </p>
-          </div>
-
           <div style={{ padding: 10, backgroundColor: "#f8fafc", borderRadius: 6 }}>
             <strong style={{ fontSize: 12, color: "#64748b" }}>
               {pair.mentor.name} (Mentor):
             </strong>
             <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "#1e293b" }}>
               {record.postSessionReflectionMentor || "No reflection saved yet."}
+            </p>
+          </div>
+
+          <div style={{ padding: 10, backgroundColor: "#f8fafc", borderRadius: 6 }}>
+            <strong style={{ fontSize: 12, color: "#64748b" }}>
+              {pair.mentee.name} (Mentee):
+            </strong>
+            <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "#1e293b" }}>
+              {record.postSessionReflectionMentee || "No reflection saved yet."}
             </p>
           </div>
         </div>
@@ -1383,6 +1821,7 @@ export default function MentoringSpace() {
   const [data, setData] = useState<Space | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [lastActionPath, setLastActionPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [week, setWeek] = useState(1);
   const [tab, setTab] = useState("Session");
@@ -1432,6 +1871,7 @@ export default function MentoringSpace() {
     setBusy(true);
     setError("");
     setNotice("");
+    setLastActionPath(path);
     try {
       const res = await fetch("/api/pair/" + pairId + path, {
         method,
@@ -1441,7 +1881,13 @@ export default function MentoringSpace() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Save failed.");
       await reload();
-      setNotice("Saved / सहेजा गया");
+      setNotice(
+        path === "/respond"
+          ? result.status === "ACTIVE"
+            ? "✓ Saved Confirmation: Pairing invitation accepted! All 12 weekly sessions are now unlocked."
+            : "✓ Saved Confirmation: Your pairing acceptance has been recorded! Waiting for your counterpart to accept."
+          : "✓ Saved Confirmation: Your input has been saved successfully! / सहेजा गया",
+      );
       return true;
     } catch (e) {
       setError(
@@ -1469,9 +1915,54 @@ export default function MentoringSpace() {
   const participant = [pair.mentorCode, pair.menteeCode].includes(
     user.employeeCode,
   );
-  const isMentor = user.employeeCode === pair.mentorCode || user.role === "ADMIN";
+  const isMeMentor = user.employeeCode === pair.mentorCode;
+  const isMeMentee = user.employeeCode === pair.menteeCode;
+  const isMentor = isMeMentor || user.role === "ADMIN";
   const ended = ["TERMINATED", "DECLINED"].includes(pair.status);
   const blocked = busy || pair.isOffRecord || ended;
+  const awaitingAcceptance = [
+    "PROPOSED",
+    "PENDING_ACCEPTANCE",
+    "ACCEPTED",
+  ].includes(pair.status);
+  const hasUserAccepted = isMeMentor
+    ? Boolean(pair.mentorAcceptedAt)
+    : isMeMentee
+      ? Boolean(pair.menteeAcceptedAt)
+      : false;
+
+  const handlePairResponse = async (action: "ACCEPT" | "DECLINE") => {
+    let declineReason = "";
+    if (action === "DECLINE") {
+      const input = window.prompt(
+        "Optional reason for declining this pairing invitation:",
+      );
+      if (input === null) return;
+      declineReason = input;
+    }
+    await send("/respond", "POST", { action, declineReason });
+  };
+
+  const renderInlineFeedback = (targetPath: string) => {
+    if (lastActionPath !== targetPath || (!notice && !error)) return null;
+    return (
+      <div
+        role={error ? "alert" : "status"}
+        style={{
+          marginTop: "0.75rem",
+          padding: "0.7rem 1rem",
+          borderRadius: "8px",
+          backgroundColor: error ? "#fef2f2" : "#dcfce7",
+          border: `1px solid ${error ? "#fecaca" : "#86efac"}`,
+          color: error ? "#b91c1c" : "#166534",
+          fontWeight: 700,
+          fontSize: "0.88rem",
+        }}
+      >
+        {error || notice}
+      </div>
+    );
+  };
 
   const name = (code?: string) =>
     code === pair.mentorCode
@@ -1505,6 +1996,96 @@ export default function MentoringSpace() {
   ).length;
   const progressPct = Math.round((completedSessionsCount / 12) * 100);
 
+  const renderAcceptanceBanner = () => (
+    <div
+      className="record"
+      style={{
+        backgroundColor: "#fffbeb",
+        border: "2px solid #f59e0b",
+        marginBottom: "1rem",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "1rem",
+        }}
+      >
+        <div>
+          <h3 style={{ margin: "0 0 0.3rem 0", color: "#92400e" }}>
+            🔔 Pairing Invitation — Accept to Unlock 12-Week Sessions
+          </h3>
+          <p style={{ margin: 0, fontSize: "0.88rem", color: "#78350f" }}>
+            <strong>Mentor:</strong> {pair.mentor.name} (
+            {pair.mentorAcceptedAt ? "✓ Accepted" : "⏳ Pending"}) ·{" "}
+            <strong>Mentee:</strong> {pair.mentee.name} (
+            {pair.menteeAcceptedAt ? "✓ Accepted" : "⏳ Pending"})
+          </p>
+        </div>
+
+        {(participant || user.role === "ADMIN") && !ended && (
+          <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+            {user.role === "ADMIN" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handlePairResponse("ACCEPT")}
+                style={{
+                  backgroundColor: "#16a34a",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                }}
+              >
+                ✓ Activate Pair &amp; Unlock Sessions Now
+              </button>
+            ) : !hasUserAccepted ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handlePairResponse("ACCEPT")}
+                  style={{
+                    backgroundColor: "#16a34a",
+                    color: "#ffffff",
+                    fontWeight: 700,
+                  }}
+                >
+                  ✓ Accept Pairing Invitation / आमंत्रण स्वीकार करें
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => void handlePairResponse("DECLINE")}
+                >
+                  ✕ Decline Invitation
+                </button>
+              </>
+            ) : (
+              <span
+                style={{
+                  padding: "0.5rem 0.85rem",
+                  borderRadius: "8px",
+                  backgroundColor: "#dcfce7",
+                  border: "1px solid #86efac",
+                  color: "#166534",
+                  fontWeight: 700,
+                  fontSize: "0.85rem",
+                }}
+              >
+                ✓ You have accepted this invitation. Waiting for your counterpart to accept.
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      {renderInlineFeedback("/respond")}
+    </div>
+  );
+
   return (
     <main className="coach">
       <section className="resume-card">
@@ -1519,9 +2100,10 @@ export default function MentoringSpace() {
             {pair.status} · 12-Week Mentoring Space
           </span>
           <strong>
-            {pair.mentee.name} &amp; {pair.mentor.name}
+            {pair.mentor.name} (Mentor) &amp; {pair.mentee.name} (Mentee)
           </strong>
           <span>
+            Mentor: {pair.mentor.designation} ({pair.mentor.department}) · Mentee:{" "}
             {pair.mentee.designation} ({pair.mentee.department}) ·{" "}
             {completedSessionsCount} of 12 weeks completed
           </span>
@@ -1552,6 +2134,8 @@ export default function MentoringSpace() {
           </button>
         )}
       </section>
+
+      {awaitingAcceptance && renderAcceptanceBanner()}
 
       {pair.isOffRecord && (
         <div className="notice warning">
@@ -1610,6 +2194,7 @@ export default function MentoringSpace() {
             </label>
             <div style={{ marginTop: "0.75rem" }}>
               <button>Save goals</button>
+              {renderInlineFeedback("/goals")}
             </div>
           </fieldset>
         </form>
@@ -1694,10 +2279,13 @@ export default function MentoringSpace() {
         </div>
 
         {!session && (
-          <p>
-            Sessions become available after both participants accept the
-            invitation.
-          </p>
+          <div style={{ marginTop: "1rem" }}>
+            <p className="muted">
+              Sessions become available after both participants accept the
+              invitation below:
+            </p>
+            {renderAcceptanceBanner()}
+          </div>
         )}
 
         {pair.sessions.map((s) => (
@@ -1759,6 +2347,7 @@ export default function MentoringSpace() {
                 />
               </label>
               <button>Ask coach</button>
+              {renderInlineFeedback("/ai")}
             </fieldset>
           </form>
         </section>
@@ -1832,8 +2421,12 @@ export default function MentoringSpace() {
               <label>
                 Owner
                 <select name="employeeCode">
-                  <option value={pair.menteeCode}>{pair.mentee.name}</option>
-                  <option value={pair.mentorCode}>{pair.mentor.name}</option>
+                  <option value={pair.mentorCode}>
+                    {pair.mentor.name} (Mentor)
+                  </option>
+                  <option value={pair.menteeCode}>
+                    {pair.mentee.name} (Mentee)
+                  </option>
                 </select>
               </label>
               <label>
@@ -1842,6 +2435,7 @@ export default function MentoringSpace() {
               </label>
             </div>
             <button>Add action</button>
+            {renderInlineFeedback("/action")}
           </fieldset>
         </form>
       </section>
@@ -1932,44 +2526,48 @@ export default function MentoringSpace() {
         })()}
       </section>
 
-      {(["Learning journal", "Notebook"] as const).map((t) => (
-        <section className="card" hidden={tab !== "Journey"} key={t}>
-          <h2>{t}</h2>
-          <p className="muted">
-            Shared with this pair and the administrators. Saved entries remain
-            available below.
-          </p>
-          <form
-            onChange={() =>
-              dirty.current.add(t === "Notebook" ? "/notebook" : "/privatenote")
-            }
-            onSubmit={(e) =>
-              void simpleSubmit(
-                e,
-                t === "Notebook" ? "/notebook" : "/privatenote",
-                t === "Notebook" ? "PUT" : "POST",
-              )
-            }
-          >
-            <fieldset disabled={blocked}>
-              <label>
-                New entry / नई प्रविष्टि
-                <textarea name="content" required maxLength={20000} />
-              </label>
-              <button>Save entry</button>
-            </fieldset>
-          </form>
-          {(t === "Notebook" ? pair.notebooks : pair.learningNotes).map((n) => (
-            <article className="record" key={n.id}>
-              <p className="muted">
-                {name(n.employeeCode ?? n.updatedBy)} ·{" "}
-                {displayTime((n.createdAt ?? n.updatedAt)!)}
-              </p>
-              <pre>{n.content}</pre>
-            </article>
-          ))}
-        </section>
-      ))}
+      {(["Learning journal", "Notebook"] as const).map((t) => {
+        const targetPath = t === "Notebook" ? "/notebook" : "/privatenote";
+        return (
+          <section className="card" hidden={tab !== "Journey"} key={t}>
+            <h2>{t}</h2>
+            <p className="muted">
+              Shared with this pair and the administrators. Saved entries remain
+              available below.
+            </p>
+            <form
+              onChange={() => dirty.current.add(targetPath)}
+              onSubmit={(e) =>
+                void simpleSubmit(
+                  e,
+                  targetPath,
+                  t === "Notebook" ? "PUT" : "POST",
+                )
+              }
+            >
+              <fieldset disabled={blocked}>
+                <label>
+                  New entry / नई प्रविष्टि
+                  <textarea name="content" required maxLength={20000} />
+                </label>
+                <button>Save entry</button>
+                {renderInlineFeedback(targetPath)}
+              </fieldset>
+            </form>
+            {(t === "Notebook" ? pair.notebooks : pair.learningNotes).map(
+              (n) => (
+                <article className="record" key={n.id}>
+                  <p className="muted">
+                    {name(n.employeeCode ?? n.updatedBy)} ·{" "}
+                    {displayTime((n.createdAt ?? n.updatedAt)!)}
+                  </p>
+                  <pre>{n.content}</pre>
+                </article>
+              ),
+            )}
+          </section>
+        );
+      })}
 
       {/* Midpoint & Closing Reviews (Week 6 and Week 12) */}
       <section className="card" hidden={tab !== "Journey"}>
@@ -2009,6 +2607,7 @@ export default function MentoringSpace() {
                 <textarea name="feedbackText" required />
               </label>
               <button>Save my review</button>
+              {renderInlineFeedback("/survey")}
             </fieldset>
           </form>
         )}
@@ -2036,6 +2635,49 @@ export default function MentoringSpace() {
           </p>
         )}
       </section>
+
+      {/* Floating Bottom Notification Bar */}
+      {(notice || error) && (
+        <div
+          role={error ? "alert" : "status"}
+          style={{
+            position: "fixed",
+            bottom: "1.25rem",
+            right: "1.25rem",
+            zIndex: 9999,
+            maxWidth: "460px",
+            padding: "0.85rem 1.15rem",
+            borderRadius: "10px",
+            backgroundColor: error ? "#fef2f2" : "#dcfce7",
+            border: `2px solid ${error ? "#ef4444" : "#22c55e"}`,
+            color: error ? "#991b1b" : "#166534",
+            boxShadow: "0 10px 25px rgba(15, 23, 42, 0.18)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.75rem",
+            fontWeight: 700,
+            fontSize: "0.88rem",
+          }}
+        >
+          <span>{error || notice}</span>
+          <button
+            type="button"
+            className="secondary"
+            style={{
+              padding: "0.25rem 0.55rem",
+              fontSize: "0.75rem",
+              minHeight: "auto",
+            }}
+            onClick={() => {
+              setError("");
+              setNotice("");
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </main>
   );
 }

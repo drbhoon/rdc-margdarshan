@@ -57,6 +57,10 @@ type Pair = {
   status: string;
   mentor: Employee;
   mentee: Employee;
+  mentorCode?: string;
+  menteeCode?: string;
+  mentorAcceptedAt?: string | null;
+  menteeAcceptedAt?: string | null;
   sharedGoals?: string | null;
   sessions: Array<{
     id: string;
@@ -124,6 +128,7 @@ export default function Dashboard() {
   const [sendingInviteCode, setSendingInviteCode] = useState<string | null>(
     null,
   );
+  const [actionSection, setActionSection] = useState<string | null>(null);
   const [detailModal, setDetailModal] = useState<{
     type:
       | "incomplete"
@@ -212,10 +217,11 @@ export default function Dashboard() {
     }
   }
 
-  async function send(path: string, body: unknown) {
+  async function send(path: string, body: unknown, section = "general") {
     setBusy(true);
     setError("");
     setMessage("");
+    setActionSection(section);
     try {
       const res = await fetch(path, {
         method: "POST",
@@ -225,7 +231,14 @@ export default function Dashboard() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Request failed.");
       await load();
-      setMessage(json.message || "Saved successfully.");
+      setMessage(
+        json.message ||
+          (json.status === "ACTIVE"
+            ? "✓ Saved Confirmation: Pairing accepted and activated! All 12 weekly sessions are now unlocked."
+            : json.status === "PENDING_ACCEPTANCE"
+              ? "✓ Saved Confirmation: Your pairing acceptance has been recorded! Waiting for your counterpart to accept."
+              : "✓ Saved Confirmation: Changes saved successfully."),
+      );
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Connection failed.");
@@ -235,6 +248,25 @@ export default function Dashboard() {
     }
   }
 
+  async function respondToPairing(
+    pairId: string,
+    action: "ACCEPT" | "DECLINE",
+  ) {
+    let declineReason = "";
+    if (action === "DECLINE") {
+      const input = window.prompt(
+        "Optional reason for declining this pairing invitation:",
+      );
+      if (input === null) return;
+      declineReason = input;
+    }
+    await send(
+      `/api/pair/${pairId}/respond`,
+      { action, declineReason },
+      `pair-${pairId}`,
+    );
+  }
+
   async function candidate(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -242,6 +274,7 @@ export default function Dashboard() {
       await send(
         "/api/admin/candidates",
         Object.fromEntries(new FormData(form)),
+        "candidate-form",
       )
     ) {
       form.reset();
@@ -917,18 +950,18 @@ export default function Dashboard() {
                               </div>
                               <div className="form-row" style={{ margin: "0.6rem 0" }}>
                                 <div>
-                                  <small className="muted">Mentee</small>
-                                  <div>
-                                    <strong>{s.mentee.name}</strong>
-                                  </div>
-                                  <div className="muted">{s.mentee.department}</div>
-                                </div>
-                                <div>
                                   <small className="muted">Mentor</small>
                                   <div>
                                     <strong>{s.mentor.name}</strong>
                                   </div>
                                   <div className="muted">{s.mentor.department}</div>
+                                </div>
+                                <div>
+                                  <small className="muted">Mentee</small>
+                                  <div>
+                                    <strong>{s.mentee.name}</strong>
+                                  </div>
+                                  <div className="muted">{s.mentee.department}</div>
                                 </div>
                               </div>
                               <ul className="requirement-list">
@@ -975,10 +1008,14 @@ export default function Dashboard() {
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    void send("/api/admin/pair", {
-                      ...Object.fromEntries(new FormData(e.currentTarget)),
-                      action: "CREATE_PAIR",
-                    });
+                    void send(
+                      "/api/admin/pair",
+                      {
+                        ...Object.fromEntries(new FormData(e.currentTarget)),
+                        action: "CREATE_PAIR",
+                      },
+                      "create-pair",
+                    );
                   }}
                   className="form"
                   style={{
@@ -990,21 +1027,6 @@ export default function Dashboard() {
                   <h3>Create manual pairing invitation</h3>
                   <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0 }}>
                     <div className="form-row">
-                      <label>
-                        Mentee
-                        <select name="menteeCode" required defaultValue="">
-                          <option value="" disabled>
-                            Choose Mentee…
-                          </option>
-                          {roster
-                            .filter((e) => e.role === "MENTEE")
-                            .map((e) => (
-                              <option key={e.employeeCode} value={e.employeeCode}>
-                                {e.name} (#{e.employeeCode}) · {e.department}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
                       <label>
                         Mentor
                         <select name="mentorCode" required defaultValue="">
@@ -1021,12 +1043,52 @@ export default function Dashboard() {
                             ))}
                         </select>
                       </label>
+                      <label>
+                        Mentee
+                        <select name="menteeCode" required defaultValue="">
+                          <option value="" disabled>
+                            Choose Mentee…
+                          </option>
+                          {roster
+                            .filter((e) => e.role === "MENTEE")
+                            .map((e) => (
+                              <option key={e.employeeCode} value={e.employeeCode}>
+                                {e.name} (#{e.employeeCode}) · {e.department}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
                     </div>
                     <div style={{ marginTop: "1rem" }}>
                       <button type="submit">
                         <Plus size={16} />
                         <span>Create Invitation</span>
                       </button>
+                      {actionSection === "create-pair" && message && (
+                        <div
+                          role="status"
+                          style={{
+                            marginTop: "0.75rem",
+                            padding: "0.65rem 1rem",
+                            borderRadius: "8px",
+                            backgroundColor: "#dcfce7",
+                            border: "1px solid #86efac",
+                            color: "#166534",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {message}
+                        </div>
+                      )}
+                      {actionSection === "create-pair" && error && (
+                        <div
+                          role="alert"
+                          className="message error-box"
+                          style={{ marginTop: "0.75rem" }}
+                        >
+                          {error}
+                        </div>
+                      )}
                     </div>
                   </fieldset>
                 </form>
@@ -1047,14 +1109,20 @@ export default function Dashboard() {
                     Pending invitations (
                     {pairs.filter((p) => p.status !== "ACTIVE").length})
                   </h2>
-                  {pairs.some((p) => p.status === "PROPOSED") && (
+                  {pairs.some((p) =>
+                    ["PROPOSED", "PENDING_ACCEPTANCE"].includes(p.status),
+                  ) && (
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() =>
-                        void send("/api/admin/pair", {
-                          action: "CONFIRM_ALL",
-                        })
+                        void send(
+                          "/api/admin/pair",
+                          {
+                            action: "CONFIRM_ALL",
+                          },
+                          "pending-pairs",
+                        )
                       }
                     >
                       <Mail size={16} />
@@ -1077,13 +1145,19 @@ export default function Dashboard() {
                             <span className="status-pill status-proposed">
                               {p.status}
                             </span>
+                            <span className="badge">
+                              Mentor: {p.mentorAcceptedAt ? "✓ Accepted" : "⏳ Pending"}
+                            </span>
+                            <span className="badge">
+                              Mentee: {p.menteeAcceptedAt ? "✓ Accepted" : "⏳ Pending"}
+                            </span>
                           </div>
                           <p style={{ margin: "0.4rem 0" }}>
-                            <strong>Mentee:</strong> {p.mentee.name} (#
-                            {p.mentee.employeeCode})
-                            <br />
                             <strong>Mentor:</strong> {p.mentor.name} (#
                             {p.mentor.employeeCode})
+                            <br />
+                            <strong>Mentee:</strong> {p.mentee.name} (#
+                            {p.mentee.employeeCode})
                           </p>
                           <div
                             style={{
@@ -1092,18 +1166,39 @@ export default function Dashboard() {
                               flexWrap: "wrap",
                             }}
                           >
+                            {!["TERMINATED", "DECLINED"].includes(p.status) && (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                style={{
+                                  padding: "0.4rem 0.75rem",
+                                  fontSize: "0.8rem",
+                                  backgroundColor: "#16a34a",
+                                  color: "#ffffff",
+                                }}
+                                onClick={() => void respondToPairing(p.id, "ACCEPT")}
+                              >
+                                <CheckCircle2 size={14} />
+                                <span>Activate Pair Now</span>
+                              </button>
+                            )}
                             <button
                               type="button"
+                              className="secondary"
                               disabled={busy}
                               style={{
                                 padding: "0.4rem 0.75rem",
                                 fontSize: "0.8rem",
                               }}
                               onClick={() =>
-                                void send("/api/admin/pair", {
-                                  action: "CONFIRM_PAIR",
-                                  pairId: p.id,
-                                })
+                                void send(
+                                  "/api/admin/pair",
+                                  {
+                                    action: "CONFIRM_PAIR",
+                                    pairId: p.id,
+                                  },
+                                  `pair-${p.id}`,
+                                )
                               }
                             >
                               <Mail size={14} />
@@ -1120,6 +1215,23 @@ export default function Dashboard() {
                               View Space →
                             </Link>
                           </div>
+                          {actionSection === `pair-${p.id}` && message && (
+                            <div
+                              role="status"
+                              style={{
+                                marginTop: "0.6rem",
+                                padding: "0.5rem 0.75rem",
+                                borderRadius: "6px",
+                                backgroundColor: "#dcfce7",
+                                border: "1px solid #86efac",
+                                color: "#166534",
+                                fontSize: "0.8rem",
+                                fontWeight: 700,
+                              }}
+                            >
+                              {message}
+                            </div>
+                          )}
                         </div>
                       ))}
                   </div>
@@ -1188,7 +1300,7 @@ export default function Dashboard() {
                           className="tile-cover"
                           style={{
                             background: coverFor(
-                              `${p.mentee.name}-${p.mentor.name}`,
+                              `${p.mentor.name}-${p.mentee.name}`,
                             ),
                           }}
                         >
@@ -1197,16 +1309,16 @@ export default function Dashboard() {
                             {p.isOffRecord ? " · OFF RECORD" : ""}
                           </span>
                           <span className="tile-initial" aria-hidden="true">
-                            {p.mentee.name.charAt(0).toUpperCase()}
+                            {p.mentor.name.charAt(0).toUpperCase()}
                           </span>
                         </div>
                         <div className="tile-body">
                           <h3>
-                            {p.mentee.name} &amp; {p.mentor.name}
+                            {p.mentor.name} (Mentor) &amp; {p.mentee.name} (Mentee)
                           </h3>
                           <p className="muted">
-                            Mentee: {p.mentee.department} · Mentor:{" "}
-                            {p.mentor.department}
+                            Mentor: {p.mentor.department} · Mentee:{" "}
+                            {p.mentee.department}
                           </p>
                           <p className="muted">
                             {completedCount} of 12 weeks completed
@@ -1595,6 +1707,31 @@ export default function Dashboard() {
                       <button type="submit">
                         Save employee &amp; send invite
                       </button>
+                      {actionSection === "candidate-form" && message && (
+                        <div
+                          role="status"
+                          style={{
+                            marginTop: "0.75rem",
+                            padding: "0.75rem 1rem",
+                            borderRadius: "8px",
+                            backgroundColor: "#dcfce7",
+                            border: "1px solid #86efac",
+                            color: "#166534",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {message}
+                        </div>
+                      )}
+                      {actionSection === "candidate-form" && error && (
+                        <div
+                          role="alert"
+                          className="message error-box"
+                          style={{ marginTop: "0.75rem" }}
+                        >
+                          {error}
+                        </div>
+                      )}
                     </div>
                   </fieldset>
                 </form>
@@ -1681,6 +1818,8 @@ export default function Dashboard() {
                 {pairs.map((p) => {
                   const isMeMentee =
                     p.mentee.employeeCode === user.employeeCode;
+                  const isMeMentor =
+                    p.mentor.employeeCode === user.employeeCode;
                   const partner = isMeMentee ? p.mentor : p.mentee;
                   const completedCount = p.sessions.filter(
                     (s) => s.status === "COMPLETED",
@@ -1689,13 +1828,19 @@ export default function Dashboard() {
                     100,
                     Math.round((completedCount / 12) * 100),
                   );
+                  const awaitingAcceptance = [
+                    "PROPOSED",
+                    "PENDING_ACCEPTANCE",
+                    "ACCEPTED",
+                  ].includes(p.status);
+                  const hasUserAccepted = isMeMentor
+                    ? Boolean(p.mentorAcceptedAt)
+                    : isMeMentee
+                      ? Boolean(p.menteeAcceptedAt)
+                      : false;
 
                   return (
-                    <Link
-                      key={p.id}
-                      href={"/space/" + p.id}
-                      className="course-tile"
-                    >
+                    <div key={p.id} className="course-tile">
                       <div
                         className="tile-cover"
                         style={{ background: coverFor(partner.name) }}
@@ -1710,8 +1855,11 @@ export default function Dashboard() {
                         </span>
                       </div>
                       <div className="tile-body">
-                        <h3>{partner.name}</h3>
+                        <h3>
+                          {p.mentor.name} (Mentor) &amp; {p.mentee.name} (Mentee)
+                        </h3>
                         <p className="muted">
+                          Counterpart: <strong>{partner.name}</strong> ·{" "}
                           {partner.designation} · {partner.department}
                         </p>
                         <div className="badge-row" style={{ marginTop: "0.25rem" }}>
@@ -1724,12 +1872,118 @@ export default function Dashboard() {
                             </span>
                           )}
                         </div>
-                        <div className="tile-foot">
-                          <span
-                            className={`status-pill status-${p.status.toLowerCase()}`}
+
+                        {awaitingAcceptance && (
+                          <div
+                            className="record"
+                            style={{
+                              marginTop: "0.65rem",
+                              backgroundColor: "#fffbeb",
+                              borderColor: "#f59e0b",
+                            }}
                           >
-                            {p.status} · {completedCount}/12 weeks
-                          </span>
+                            <strong style={{ color: "#92400e", fontSize: "0.85rem" }}>
+                              🔔 Pairing Invitation — Action Required
+                            </strong>
+                            <p
+                              className="muted"
+                              style={{ margin: "0.25rem 0 0.5rem", fontSize: "0.78rem" }}
+                            >
+                              Mentor ({p.mentor.name}):{" "}
+                              <strong>
+                                {p.mentorAcceptedAt ? "✓ Accepted" : "⏳ Pending"}
+                              </strong>{" "}
+                              · Mentee ({p.mentee.name}):{" "}
+                              <strong>
+                                {p.menteeAcceptedAt ? "✓ Accepted" : "⏳ Pending"}
+                              </strong>
+                            </p>
+                            {!hasUserAccepted ? (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: "0.5rem",
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void respondToPairing(p.id, "ACCEPT")
+                                  }
+                                  style={{
+                                    backgroundColor: "#16a34a",
+                                    color: "#ffffff",
+                                    padding: "0.45rem 0.85rem",
+                                    fontSize: "0.82rem",
+                                  }}
+                                >
+                                  ✓ Accept Pairing Invitation / स्वीकार करें
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    void respondToPairing(p.id, "DECLINE")
+                                  }
+                                  style={{
+                                    padding: "0.45rem 0.75rem",
+                                    fontSize: "0.8rem",
+                                  }}
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            ) : (
+                              <p
+                                style={{
+                                  margin: 0,
+                                  color: "#166534",
+                                  fontWeight: 700,
+                                  fontSize: "0.8rem",
+                                }}
+                              >
+                                ✓ You have accepted this invitation. Waiting for
+                                your counterpart to accept.
+                              </p>
+                            )}
+                            {actionSection === `pair-${p.id}` && message && (
+                              <div
+                                role="status"
+                                style={{
+                                  marginTop: "0.5rem",
+                                  padding: "0.5rem 0.75rem",
+                                  borderRadius: "6px",
+                                  backgroundColor: "#dcfce7",
+                                  border: "1px solid #86efac",
+                                  color: "#166534",
+                                  fontSize: "0.8rem",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {message}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="tile-foot" style={{ marginTop: "0.6rem" }}>
+                          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                            <Link
+                              href={"/space/" + p.id}
+                              className="button"
+                              style={{ padding: "0.45rem 0.85rem", fontSize: "0.82rem" }}
+                            >
+                              Open Mentoring Space →
+                            </Link>
+                            <span
+                              className={`status-pill status-${p.status.toLowerCase()}`}
+                            >
+                              {p.status} · {completedCount}/12 weeks
+                            </span>
+                          </div>
                           <ProgressRing
                             percent={progressPct}
                             size={44}
@@ -1737,7 +1991,7 @@ export default function Dashboard() {
                           />
                         </div>
                       </div>
-                    </Link>
+                    </div>
                   );
                 })}
               </div>
@@ -2227,8 +2481,8 @@ export default function Dashboard() {
                   <div className="form">
                     {proposedList.map((p) => (
                       <div key={p.id} className="record" style={{ margin: 0 }}>
-                        <strong>{p.mentee.name}</strong> with{" "}
-                        <strong>{p.mentor.name}</strong> ·{" "}
+                        <strong>{p.mentor.name}</strong> (Mentor) with{" "}
+                        <strong>{p.mentee.name}</strong> (Mentee) ·{" "}
                         <span className="status-pill status-proposed">
                           {p.status}
                         </span>
@@ -2258,7 +2512,7 @@ export default function Dashboard() {
                       >
                         <div>
                           <strong>
-                            {p.mentee.name} &amp; {p.mentor.name}
+                            {p.mentor.name} (Mentor) &amp; {p.mentee.name} (Mentee)
                           </strong>
                           <div className="muted">
                             No upcoming meeting time saved
@@ -2366,7 +2620,7 @@ export default function Dashboard() {
                           >
                             <div>
                               <strong>
-                                {p.mentee.name} &amp; {p.mentor.name}
+                                {p.mentor.name} (Mentor) &amp; {p.mentee.name} (Mentee)
                               </strong>
                               <div className="muted">
                                 {completedCount} of 12 weeks completed
@@ -2409,7 +2663,7 @@ export default function Dashboard() {
                               ✓ Completed
                             </span>
                             <div className="muted">
-                              {p.mentee.name} with {p.mentor.name}
+                              {p.mentor.name} (Mentor) with {p.mentee.name} (Mentee)
                             </div>
                           </div>
                           <Link
@@ -2425,6 +2679,49 @@ export default function Dashboard() {
                 );
               })()}
           </div>
+        </div>
+      )}
+
+      {/* Floating Bottom Notification Bar */}
+      {(message || error) && (
+        <div
+          role={error ? "alert" : "status"}
+          style={{
+            position: "fixed",
+            bottom: "1.25rem",
+            right: "1.25rem",
+            zIndex: 9999,
+            maxWidth: "460px",
+            padding: "0.85rem 1.15rem",
+            borderRadius: "10px",
+            backgroundColor: error ? "#fef2f2" : "#dcfce7",
+            border: `2px solid ${error ? "#ef4444" : "#22c55e"}`,
+            color: error ? "#991b1b" : "#166534",
+            boxShadow: "0 10px 25px rgba(15, 23, 42, 0.18)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.75rem",
+            fontWeight: 700,
+            fontSize: "0.88rem",
+          }}
+        >
+          <span>{error || message}</span>
+          <button
+            type="button"
+            className="secondary"
+            style={{
+              padding: "0.25rem 0.55rem",
+              fontSize: "0.75rem",
+              minHeight: "auto",
+            }}
+            onClick={() => {
+              setError("");
+              setMessage("");
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
     </main>

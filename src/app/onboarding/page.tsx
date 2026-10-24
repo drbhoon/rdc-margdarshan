@@ -119,6 +119,37 @@ const DISC_QUESTIONS = [
   },
 ];
 
+function formatAvailabilitySlot(dateTimeLocal: string, endTime?: string): string {
+  if (!dateTimeLocal) return "";
+  const parsed = new Date(dateTimeLocal);
+  if (Number.isNaN(parsed.getTime())) return dateTimeLocal;
+  const datePart = parsed.toLocaleDateString("en-IN", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const startPart = parsed.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+  if (endTime) {
+    const [h, m] = endTime.split(":").map(Number);
+    if (!Number.isNaN(h) && !Number.isNaN(m)) {
+      const endDate = new Date(parsed);
+      endDate.setHours(h, m, 0, 0);
+      const endPart = endDate.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+      return `${datePart}, ${startPart} – ${endPart} IST`;
+    }
+  }
+  return `${datePart}, ${startPart} IST`;
+}
+
 function ProfileForm({
   user,
   refresh,
@@ -128,7 +159,16 @@ function ProfileForm({
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [message, setMessage] = useState("");
+    [message, setMessage] = useState(""),
+    [actionTarget, setActionTarget] = useState<"profile" | "disc" | null>(null),
+    [availabilitySlots, setAvailabilitySlots] = useState<string[]>(() =>
+      (user.availability ?? "")
+        .split(/\s*\|\s*|\n+/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+    [pickerDateTime, setPickerDateTime] = useState(""),
+    [pickerEndTime, setPickerEndTime] = useState("");
 
   const setupSteps = [
     {
@@ -143,12 +183,39 @@ function ProfileForm({
   const completedSteps = setupSteps.filter((step) => step.done).length;
   const setupPercent = Math.round((completedSteps / setupSteps.length) * 100);
 
+  const currentPickerFormatted = formatAvailabilitySlot(
+    pickerDateTime,
+    pickerEndTime,
+  );
+  const combinedAvailability = [
+    ...availabilitySlots,
+    ...(currentPickerFormatted &&
+    !availabilitySlots.includes(currentPickerFormatted)
+      ? [currentPickerFormatted]
+      : []),
+  ].join(" | ");
+
+  function addPickedSlot() {
+    if (!pickerDateTime) return;
+    const formatted = formatAvailabilitySlot(pickerDateTime, pickerEndTime);
+    if (formatted && !availabilitySlots.includes(formatted)) {
+      setAvailabilitySlots((prev) => [...prev, formatted]);
+    }
+    setPickerDateTime("");
+    setPickerEndTime("");
+  }
+
+  function removeSlot(slotToRemove: string) {
+    setAvailabilitySlots((prev) => prev.filter((s) => s !== slotToRemove));
+  }
+
   async function submit(e: FormEvent<HTMLFormElement>, assessment = false) {
     e.preventDefault();
     const values = new FormData(e.currentTarget);
     setBusy(true);
     setError("");
     setMessage("");
+    setActionTarget(assessment ? "disc" : "profile");
     const body = assessment
       ? {
           answers: DISC_QUESTIONS.map((q) =>
@@ -166,7 +233,7 @@ function ProfileForm({
             .split("\n")
             .map((s) => s.trim())
             .filter(Boolean),
-          availability: String(values.get("availability") ?? ""),
+          availability: combinedAvailability || String(values.get("availability") ?? ""),
           commStyleNotes: String(values.get("commStyleNotes") ?? ""),
           isConsentShared: values.get("consent") === "on",
         };
@@ -181,8 +248,19 @@ function ProfileForm({
       );
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
+      if (!assessment && currentPickerFormatted) {
+        if (!availabilitySlots.includes(currentPickerFormatted)) {
+          setAvailabilitySlots((prev) => [...prev, currentPickerFormatted]);
+        }
+        setPickerDateTime("");
+        setPickerEndTime("");
+      }
       await refresh();
-      setMessage("Saved / सहेजा गया");
+      setMessage(
+        assessment
+          ? "✓ Saved Confirmation: Your DISC communication reflection has been saved successfully! / आपका DISC आत्मचिंतन सफलतापूर्वक सहेजा गया।"
+          : "✓ Saved Confirmation: Your profile and availability have been saved successfully! / आपकी प्रोफ़ाइल और उपलब्धता सफलतापूर्वक सहेजी गई।",
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to save.");
     } finally {
@@ -306,14 +384,110 @@ function ProfileForm({
             </label>
 
             <div className="form-row">
-              <label>
-                Availability / उपलब्धता
+              <div>
+                <label>
+                  Availability (Select Date &amp; Time) / उपलब्धता (दिनांक और समय चुनें)
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto auto",
+                      gap: "0.5rem",
+                      alignItems: "center",
+                      marginTop: "0.25rem",
+                    }}
+                  >
+                    <input
+                      type="datetime-local"
+                      value={pickerDateTime}
+                      onChange={(e) => setPickerDateTime(e.target.value)}
+                      aria-label="Select availability date and start time"
+                    />
+                    <input
+                      type="time"
+                      value={pickerEndTime}
+                      onChange={(e) => setPickerEndTime(e.target.value)}
+                      aria-label="Optional end time"
+                      title="Optional End Time"
+                    />
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={addPickedSlot}
+                      disabled={!pickerDateTime}
+                      style={{ padding: "0.55rem 0.85rem", whiteSpace: "nowrap" }}
+                    >
+                      + Add Slot
+                    </button>
+                  </div>
+                </label>
                 <input
+                  type="hidden"
                   name="availability"
-                  defaultValue={user.availability ?? ""}
-                  placeholder="e.g. Tuesdays & Thursdays, 4:00 PM - 5:30 PM"
+                  value={combinedAvailability}
                 />
-              </label>
+                {combinedAvailability ? (
+                  <div
+                    style={{
+                      marginTop: "0.5rem",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "0.4rem",
+                    }}
+                  >
+                    {availabilitySlots.map((slot) => (
+                      <span
+                        key={slot}
+                        className="badge"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.4rem",
+                          backgroundColor: "#eef2ff",
+                          color: "#3730a3",
+                          border: "1px solid #c7d2fe",
+                          padding: "0.3rem 0.6rem",
+                        }}
+                      >
+                        <span>📅 {slot}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeSlot(slot)}
+                          aria-label={`Remove ${slot}`}
+                          style={{
+                            background: "transparent",
+                            border: 0,
+                            padding: "0 0.2rem",
+                            color: "#dc2626",
+                            fontWeight: 700,
+                            minHeight: "auto",
+                            cursor: "pointer",
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                    {currentPickerFormatted &&
+                      !availabilitySlots.includes(currentPickerFormatted) && (
+                        <span
+                          className="badge"
+                          style={{
+                            backgroundColor: "#dcfce7",
+                            color: "#166534",
+                            border: "1px solid #86efac",
+                            padding: "0.3rem 0.6rem",
+                          }}
+                        >
+                          📅 {currentPickerFormatted} (Selected)
+                        </span>
+                      )}
+                  </div>
+                ) : (
+                  <small className="muted" style={{ display: "block", marginTop: "0.35rem" }}>
+                    Use the calendar &amp; time picker above to select your preferred mentoring date and time.
+                  </small>
+                )}
+              </div>
               <label>
                 How I prefer to communicate / संवाद की पसंद
                 <input
@@ -335,7 +509,34 @@ function ProfileForm({
             </label>
 
             <div>
-              <button type="submit">Save profile</button>
+              <button type="submit">
+                {busy && actionTarget === "profile" ? "Saving…" : "Save profile"}
+              </button>
+              {actionTarget === "profile" && message && (
+                <div
+                  role="status"
+                  style={{
+                    marginTop: "0.75rem",
+                    padding: "0.75rem 1rem",
+                    borderRadius: "8px",
+                    backgroundColor: "#dcfce7",
+                    border: "1px solid #86efac",
+                    color: "#166534",
+                    fontWeight: 700,
+                  }}
+                >
+                  {message}
+                </div>
+              )}
+              {actionTarget === "profile" && error && (
+                <div
+                  role="alert"
+                  className="message error-box"
+                  style={{ marginTop: "0.75rem" }}
+                >
+                  {error}
+                </div>
+              )}
             </div>
           </fieldset>
         </form>
@@ -440,7 +641,36 @@ function ProfileForm({
                 </fieldset>
               ))}
               <div>
-                <button type="submit">Save reflection</button>
+                <button type="submit">
+                  {busy && actionTarget === "disc"
+                    ? "Saving…"
+                    : "Save reflection"}
+                </button>
+                {actionTarget === "disc" && message && (
+                  <div
+                    role="status"
+                    style={{
+                      marginTop: "0.75rem",
+                      padding: "0.75rem 1rem",
+                      borderRadius: "8px",
+                      backgroundColor: "#dcfce7",
+                      border: "1px solid #86efac",
+                      color: "#166534",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {message}
+                  </div>
+                )}
+                {actionTarget === "disc" && error && (
+                  <div
+                    role="alert"
+                    className="message error-box"
+                    style={{ marginTop: "0.75rem" }}
+                  >
+                    {error}
+                  </div>
+                )}
               </div>
             </fieldset>
           </form>

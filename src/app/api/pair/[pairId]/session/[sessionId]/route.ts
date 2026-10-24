@@ -62,6 +62,12 @@ export const PUT = protectedRoute(
         (k) => body[k] !== undefined,
       );
       if (isSubmittingMenteeQa) {
+        if (user.employeeCode !== pair.menteeCode && user.role !== "ADMIN") {
+          throw new AccessError(
+            403,
+            "Only the Mentee can enter or submit Mentee Q&A responses.",
+          );
+        }
         if (wasMenteeQaRecorded) {
           const isModified = menteeQaKeys.some(
             (k) =>
@@ -92,6 +98,12 @@ export const PUT = protectedRoute(
         (k) => body[k] !== undefined,
       );
       if (isSubmittingMentorQa) {
+        if (!wasMenteeQaRecorded && !isSubmittingMenteeQa) {
+          throw new AccessError(
+            403,
+            "Mentor comments can only be entered after the Mentee has submitted their Q&A responses.",
+          );
+        }
         if (wasMentorQaRecorded) {
           const isModified = mentorQaKeys.some(
             (k) =>

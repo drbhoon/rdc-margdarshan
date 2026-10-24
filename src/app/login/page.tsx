@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Shield, Mail } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
@@ -41,6 +41,20 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [identifier, setIdentifier] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const emp = params.get("emp") || params.get("code") || params.get("email");
+    if (emp) {
+      setIdentifier(emp);
+    }
+    if (params.get("error") === "google_signin") {
+      setError(
+        "Google Workspace SSO is restricted to internal @rdc.in accounts. Please sign in directly using your Corporate Email (@ultrafine.in or @rdc.in) or Employee ID in the box below.",
+      );
+    }
+  }, []);
 
   async function handleDirectSignIn(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -114,9 +128,9 @@ export default function LoginPage() {
         <div className="card">
           <h1>Sign in</h1>
           <p className="muted">
-            Use your verified RDC Concrete (<code>@rdc.in</code>) or Ultrafine
-            Minerals (<code>@ultrafine.in</code>) Google account to access your
-            mentoring workspace.
+            Sign in with your RDC Concrete (<code>@rdc.in</code>) or Ultrafine
+            Minerals (<code>@ultrafine.in</code>) corporate email or Employee ID
+            to access your mentoring workspace.
           </p>
 
           {error && <p className="message error">{error}</p>}
@@ -132,14 +146,18 @@ export default function LoginPage() {
                 type="text"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="e.g. saif@ultrafine.in, name@rdc.in, or S00642"
+                placeholder="e.g. name@ultrafine.in, name@rdc.in, or Employee ID"
                 required
                 disabled={busy}
               />
             </label>
             <button type="submit" disabled={busy}>
               <Mail size={16} />
-              <span>{busy ? "Signing in…" : "Sign in with Corporate Email / ID"}</span>
+              <span>
+                {busy
+                  ? "Signing in…"
+                  : "Sign in with @rdc.in / @ultrafine.in Email or ID"}
+              </span>
             </button>
           </form>
 
