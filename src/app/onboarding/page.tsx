@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { UserCircle } from "lucide-react";
 import { useAuth, type User } from "@/context/AuthContext";
 import { COMPETENCIES } from "@/lib/competencies";
@@ -157,10 +158,18 @@ function ProfileForm({
   user: User;
   refresh: () => Promise<void>;
 }) {
+  const router = useRouter();
+  const discSectionRef = useRef<HTMLElement>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [actionTarget, setActionTarget] = useState<"profile" | "disc" | null>(null),
+    [nextStepPrompt, setNextStepPrompt] = useState<{
+      title: string;
+      subtitle: string;
+      steps: string[];
+      onOk?: () => void;
+    } | null>(null),
     [availabilitySlots, setAvailabilitySlots] = useState<string[]>(() =>
       (user.availability ?? "")
         .split(/\s*\|\s*|\n+/)
@@ -261,6 +270,49 @@ function ProfileForm({
           ? "✓ Saved Confirmation: Your DISC communication reflection has been saved successfully! / आपका DISC आत्मचिंतन सफलतापूर्वक सहेजा गया।"
           : "✓ Saved Confirmation: Your profile and availability have been saved successfully! / आपकी प्रोफ़ाइल और उपलब्धता सफलतापूर्वक सहेजी गई।",
       );
+      if (assessment) {
+        setNextStepPrompt({
+          title: "🎉 DISC Reflection Completed!",
+          subtitle: "Here is what you need to do next:",
+          steps: [
+            "Your DISC communication style has been saved to your profile.",
+            "Next Step: Go to your Dashboard / My Space to view your mentoring pair, accept your pairing invitation, and start Week 1.",
+            'Click "OK" below to proceed to the Dashboard.',
+          ],
+          onOk: () => {
+            router.push("/dashboard");
+          },
+        });
+      } else if (!user.discStyle) {
+        setNextStepPrompt({
+          title: "✅ Profile & Availability Saved!",
+          subtitle: "Here is what you need to do next:",
+          steps: [
+            "Your career goals, site location, competencies, and availability slots have been saved.",
+            "Next Step: Complete the 5-question DISC Communication Reflection right below on this page.",
+            'Click "OK" below to jump to the DISC Reflection section.',
+          ],
+          onOk: () => {
+            discSectionRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+          },
+        });
+      } else {
+        setNextStepPrompt({
+          title: "🎉 Profile Setup Complete!",
+          subtitle: "Here is what you need to do next:",
+          steps: [
+            "Both your profile details and DISC reflection are complete.",
+            "Next Step: Proceed to your Dashboard / My Space to accept your pairing invitation and begin your 12-week mentoring sessions.",
+            'Click "OK" below to proceed to the Dashboard.',
+          ],
+          onOk: () => {
+            router.push("/dashboard");
+          },
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to save.");
     } finally {
@@ -542,7 +594,7 @@ function ProfileForm({
         </form>
       </section>
 
-      <section className="card">
+      <section ref={discSectionRef} className="card">
         <h2>DISC communication reflection</h2>
         <p className="muted">
           A short conversation starter, not a psychometric diagnosis or
@@ -676,6 +728,86 @@ function ProfileForm({
           </form>
         </CollapsibleCard>
       </section>
+
+      {nextStepPrompt && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.65)",
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "14px",
+              maxWidth: "520px",
+              width: "100%",
+              padding: "1.5rem",
+              boxShadow: "0 20px 45px rgba(15, 23, 42, 0.3)",
+              border: "2px solid #22c55e",
+            }}
+          >
+            <h3 style={{ margin: "0 0 0.4rem 0", color: "#14532d", fontSize: "1.15rem" }}>
+              {nextStepPrompt.title}
+            </h3>
+            <p
+              style={{
+                margin: "0 0 0.75rem 0",
+                fontWeight: 700,
+                fontSize: "0.9rem",
+                color: "#15803d",
+              }}
+            >
+              {nextStepPrompt.subtitle}
+            </p>
+            <ol
+              style={{
+                margin: "0 0 1.25rem 0",
+                paddingLeft: "1.25rem",
+                color: "#1e293b",
+                fontSize: "0.9rem",
+                lineHeight: 1.55,
+              }}
+            >
+              {nextStepPrompt.steps.map((step, idx) => (
+                <li key={idx} style={{ marginBottom: "0.45rem" }}>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const action = nextStepPrompt.onOk;
+                  setNextStepPrompt(null);
+                  action?.();
+                }}
+                style={{
+                  backgroundColor: "#16a34a",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: "0.95rem",
+                  padding: "0.65rem 1.75rem",
+                  borderRadius: "8px",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                ✓ OK, Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

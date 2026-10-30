@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { DailyQuote } from "@/components/DailyQuote";
 import {
@@ -108,12 +109,19 @@ type MatchSuggestion = {
 type AdminTab = "matching" | "relationships" | "roster" | "journals";
 
 export default function Dashboard() {
+  const router = useRouter();
   const { user, loading } = useAuth();
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
+  const [dashboardNextStepPrompt, setDashboardNextStepPrompt] = useState<{
+    title: string;
+    subtitle: string;
+    steps: string[];
+    onOk?: () => void;
+  } | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>("matching");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [rosterRoleFilter, setRosterRoleFilter] = useState<string>("ALL");
@@ -239,6 +247,35 @@ export default function Dashboard() {
               ? "✓ Saved Confirmation: Your pairing acceptance has been recorded! Waiting for your counterpart to accept."
               : "✓ Saved Confirmation: Changes saved successfully."),
       );
+      if (
+        path.endsWith("/respond") &&
+        (body as { action?: string })?.action === "ACCEPT"
+      ) {
+        const matchedPairId = path.split("/")[3];
+        const isActive = json.status === "ACTIVE";
+        setDashboardNextStepPrompt({
+          title: isActive
+            ? "🎉 Pairing Active — 12-Week Sessions Unlocked!"
+            : "✅ Pairing Invitation Accepted!",
+          subtitle: "Here is what you need to do next:",
+          steps: isActive
+            ? [
+                "Both Mentor and Mentee have accepted the pairing invitation. All 12 weekly sessions are now unlocked!",
+                'Open your Mentoring Space, save your "Shared growth goals", and schedule your Week 1 session.',
+                'Click "OK" below to proceed directly into your Mentoring Space.',
+              ]
+            : [
+                "Your acceptance of this mentoring relationship has been saved.",
+                "As soon as your mentoring counterpart accepts their invitation, all 12 weekly sessions will unlock automatically.",
+                'Click "OK" below to open your Mentoring Space.',
+              ],
+          onOk: () => {
+            if (matchedPairId) {
+              router.push(`/space/${matchedPairId}`);
+            }
+          },
+        });
+      }
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Connection failed.");
@@ -2678,6 +2715,87 @@ export default function Dashboard() {
                   </div>
                 );
               })()}
+          </div>
+        </div>
+      )}
+
+      {/* Dashboard Next-Step Guidance Modal ("OK" to Proceed) */}
+      {dashboardNextStepPrompt && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.65)",
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "14px",
+              maxWidth: "520px",
+              width: "100%",
+              padding: "1.5rem",
+              boxShadow: "0 20px 45px rgba(15, 23, 42, 0.3)",
+              border: "2px solid #22c55e",
+            }}
+          >
+            <h3 style={{ margin: "0 0 0.4rem 0", color: "#14532d", fontSize: "1.15rem" }}>
+              {dashboardNextStepPrompt.title}
+            </h3>
+            <p
+              style={{
+                margin: "0 0 0.75rem 0",
+                fontWeight: 700,
+                fontSize: "0.9rem",
+                color: "#15803d",
+              }}
+            >
+              {dashboardNextStepPrompt.subtitle}
+            </p>
+            <ol
+              style={{
+                margin: "0 0 1.25rem 0",
+                paddingLeft: "1.25rem",
+                color: "#1e293b",
+                fontSize: "0.9rem",
+                lineHeight: 1.55,
+              }}
+            >
+              {dashboardNextStepPrompt.steps.map((step, idx) => (
+                <li key={idx} style={{ marginBottom: "0.45rem" }}>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const action = dashboardNextStepPrompt.onOk;
+                  setDashboardNextStepPrompt(null);
+                  action?.();
+                }}
+                style={{
+                  backgroundColor: "#16a34a",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: "0.95rem",
+                  padding: "0.65rem 1.75rem",
+                  borderRadius: "8px",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                ✓ OK, Proceed
+              </button>
+            </div>
           </div>
         </div>
       )}

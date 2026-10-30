@@ -156,6 +156,8 @@ function SessionEditor({
   blocked,
   send,
   dirtyChanged,
+  onAdvanceWeek,
+  onOpenJourneyReview,
 }: {
   record: SessionRecord;
   pair: Pair;
@@ -164,16 +166,25 @@ function SessionEditor({
   blocked: boolean;
   send: Send;
   dirtyChanged: (id: string, dirty: boolean) => void;
+  onAdvanceWeek: (nextWeek: number) => void;
+  onOpenJourneyReview: () => void;
 }) {
   const form = useRef<HTMLFormElement>(null);
+  const statusCardRef = useRef<HTMLDivElement>(null);
+  const mentorSectionRef = useRef<HTMLElement>(null);
   const [base, setBase] = useState(record);
   const [dirty, setDirty] = useState(false);
-  const [showEmbeddedMeeting, setShowEmbeddedMeeting] = useState(false);
-  const [videoServerHost, setVideoServerHost] = useState("https://meet.ffmuc.net");
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [transcriptionDraft, setTranscriptionDraft] = useState(record.transcriptionNotes || "");
+  const [transcriptionDraft, setTranscriptionDraft] = useState(
+    record.transcriptionNotes || "",
+  );
+  const [interimTranscript, setInterimTranscript] = useState("");
   const [copiedTranscript, setCopiedTranscript] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const transcriptionRef = useRef<string>(record.transcriptionNotes || "");
+  const interimRef = useRef<string>("");
+  const isTranscribingRef = useRef<boolean>(false);
+  const lastRecordIdRef = useRef<string>(record.id);
 
   const [confirmMenteeSubmit, setConfirmMenteeSubmit] = useState(false);
   const [confirmMentorSubmit, setConfirmMentorSubmit] = useState(false);
@@ -183,6 +194,12 @@ function SessionEditor({
     section: "status" | "logistics" | "mentee" | "mentor" | "minutes";
     type: "success" | "error";
     text: string;
+  } | null>(null);
+  const [nextStepPrompt, setNextStepPrompt] = useState<{
+    title: string;
+    subtitle: string;
+    steps: string[];
+    onOk?: () => void;
   } | null>(null);
 
   const isMentor = userCode === pair.mentorCode || userRole === "ADMIN";
@@ -206,35 +223,107 @@ function SessionEditor({
   const isMenteeBoxLocked = !isMentee || isMenteeQaRecorded;
   const isMentorBoxLocked = !isMenteeQaRecorded || isMentorQaRecorded;
 
-  if (!dirty && base.version !== record.version) {
+  if (!dirty && !isTranscribing && base.version !== record.version) {
     setBase(record);
-    setTranscriptionDraft(record.transcriptionNotes || "");
+    if (record.transcriptionNotes && record.transcriptionNotes !== transcriptionRef.current) {
+      transcriptionRef.current = record.transcriptionNotes;
+      setTranscriptionDraft(record.transcriptionNotes);
+    }
   }
 
   useEffect(() => {
-    if (!dirty) {
+    if (record.id !== lastRecordIdRef.current) {
+      lastRecordIdRef.current = record.id;
+      const initialNotes = record.transcriptionNotes || "";
+      transcriptionRef.current = initialNotes;
+      interimRef.current = "";
+      setTranscriptionDraft(initialNotes);
+      setInterimTranscript("");
       form.current?.reset();
-      setTranscriptionDraft(record.transcriptionNotes || "");
+      return;
     }
-  }, [base, dirty, record.transcriptionNotes]);
+
+    if (!dirty && !isTranscribingRef.current) {
+      form.current?.reset();
+      if (
+        record.transcriptionNotes &&
+        record.transcriptionNotes !== transcriptionRef.current
+      ) {
+        transcriptionRef.current = record.transcriptionNotes;
+        setTranscriptionDraft(record.transcriptionNotes);
+      }
+    }
+  }, [base, dirty, record.id, record.transcriptionNotes]);
+
+  const displayedTranscript = interimTranscript
+    ? transcriptionDraft
+      ? `${transcriptionDraft.trim()} ${interimTranscript}`
+      : interimTranscript
+    : transcriptionDraft;
 
   // Handle Speech-to-Text Auto-Transcription
   const toggleSpeechRecognition = async () => {
     if (isTranscribing) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
+      isTranscribingRef.current = false;
       setIsTranscribing(false);
-      await saveLogisticsAndMinutes(undefined, "minutes");
+
+      // Flush any live interim speech into the permanent transcript immediately
+      if (interimRef.current.trim()) {
+        const merged = transcriptionRef.current
+          ? `${transcriptionRef.current.trim()} ${interimRef.current.trim()}`
+          : interimRef.current.trim();
+        transcriptionRef.current = merged;
+        setTranscriptionDraft(merged);
+        interimRef.current = "";
+        setInterimTranscript("");
+      }
+
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // ignore if already stopped
+        }
+      }
+
+      // Allow browser a brief moment to emit any final speech chunk on stop
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      if (interimRef.current.trim()) {
+        const merged = transcriptionRef.current
+          ? `${transcriptionRef.current.trim()} ${interimRef.current.trim()}`
+          : interimRef.current.trim();
+        transcriptionRef.current = merged;
+        setTranscriptionDraft(merged);
+        interimRef.current = "";
+        setInterimTranscript("");
+      }
+
+      await saveLogisticsAndMinutes(
+        undefined,
+        "minutes",
+        transcriptionRef.current,
+      );
       return;
     }
 
     const SpeechRec =
-      (window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any }).SpeechRecognition ||
-      (window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any }).webkitSpeechRecognition;
+      (
+        window as unknown as {
+          SpeechRecognition?: any;
+          webkitSpeechRecognition?: any;
+        }
+      ).SpeechRecognition ||
+      (
+        window as unknown as {
+          SpeechRecognition?: any;
+          webkitSpeechRecognition?: any;
+        }
+      ).webkitSpeechRecognition;
 
     if (!SpeechRec) {
-      alert("Live auto-transcription uses Web Speech API. Please use Google Chrome or Microsoft Edge for live voice recognition.");
+      alert(
+        "Live auto-transcription uses Web Speech API. Please use Google Chrome or Microsoft Edge for live voice recognition.",
+      );
       return;
     }
 
@@ -246,40 +335,100 @@ function SessionEditor({
 
       rec.onresult = (event: any) => {
         let finalChunk = "";
+        let liveInterim = "";
         for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcriptPiece = event.results[i][0]?.transcript || "";
           if (event.results[i].isFinal) {
-            finalChunk += event.results[i][0].transcript + " ";
+            finalChunk += transcriptPiece + " ";
+          } else {
+            liveInterim += transcriptPiece + " ";
           }
         }
-        if (finalChunk) {
-          setTranscriptionDraft((prev) => {
-            const updated = prev ? `${prev.trim()}\n${finalChunk.trim()}` : finalChunk.trim();
-            setDirty(true);
-            dirtyChanged(record.id, true);
-            return updated;
-          });
+
+        if (finalChunk.trim()) {
+          const updated = transcriptionRef.current
+            ? `${transcriptionRef.current.trim()} ${finalChunk.trim()}`
+            : finalChunk.trim();
+          transcriptionRef.current = updated;
+          setTranscriptionDraft(updated);
+          setDirty(true);
+          dirtyChanged(record.id, true);
+        }
+
+        const cleanInterim = liveInterim.trim();
+        interimRef.current = cleanInterim;
+        setInterimTranscript(cleanInterim);
+        if (cleanInterim) {
+          setDirty(true);
+          dirtyChanged(record.id, true);
         }
       };
 
       rec.onerror = (event: any) => {
         console.warn("Speech recognition notice:", event.error);
-        setIsTranscribing(false);
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          isTranscribingRef.current = false;
+          setIsTranscribing(false);
+        }
       };
 
       rec.onend = () => {
+        // Flush any remaining interim words so nothing ever vanishes on pause
+        if (interimRef.current.trim()) {
+          const updated = transcriptionRef.current
+            ? `${transcriptionRef.current.trim()} ${interimRef.current.trim()}`
+            : interimRef.current.trim();
+          transcriptionRef.current = updated;
+          setTranscriptionDraft(updated);
+          interimRef.current = "";
+          setInterimTranscript("");
+        }
+        // Automatically keep listening if user hasn't clicked Stop yet
+        if (isTranscribingRef.current) {
+          try {
+            rec.start();
+            return;
+          } catch {
+            // Fall through if browser blocks auto-restart
+          }
+        }
+        isTranscribingRef.current = false;
         setIsTranscribing(false);
       };
 
+      isTranscribingRef.current = true;
       rec.start();
       recognitionRef.current = rec;
       setIsTranscribing(true);
     } catch (err) {
       console.error("Speech recognition startup error:", err);
+      isTranscribingRef.current = false;
       setIsTranscribing(false);
     }
   };
 
   const downloadTranscriptFile = () => {
+    const liveMinutesInput =
+      form.current?.querySelector<HTMLTextAreaElement>(
+        'textarea[name="meetingNotes"]',
+      )?.value ?? "";
+    const effectiveMeetingNotes =
+      liveMinutesInput.trim() || record.meetingNotes?.trim() || "(None recorded)";
+
+    const combinedTranscript = [
+      transcriptionRef.current ||
+        transcriptionDraft ||
+        record.transcriptionNotes ||
+        "",
+      interimRef.current || interimTranscript || "",
+    ]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(" ");
+
+    const effectiveTranscript =
+      combinedTranscript || "(No transcription text recorded)";
+
     const content = [
       `Margdarshan Mentoring Platform — Session Record & Transcript`,
       `Mentor: ${pair.mentor.name} (#${pair.mentorCode})`,
@@ -289,10 +438,10 @@ function SessionEditor({
       `------------------------------------------------------------`,
       ``,
       `LIVE MEETING MINUTES & DECISIONS:`,
-      record.meetingNotes || "(None recorded)",
+      effectiveMeetingNotes,
       ``,
       `SPEECH TRANSCRIPTION:`,
-      transcriptionDraft || record.transcriptionNotes || "(No transcription text recorded)",
+      effectiveTranscript,
     ].join("\r\n");
 
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
@@ -326,6 +475,33 @@ function SessionEditor({
         type: "success",
         text: `✓ Saved Confirmation: Week ${record.weekNumber} status updated to ${nextStatus}!`,
       });
+      if (nextStatus === "COMPLETED") {
+        const isReviewWeek = [6, 12].includes(record.weekNumber);
+        const nextWeekNum = record.weekNumber < 12 ? record.weekNumber + 1 : 12;
+        setNextStepPrompt({
+          title: `🎉 Week ${record.weekNumber} Completed!`,
+          subtitle: "Here is what you need to do next:",
+          steps: isReviewWeek
+            ? [
+                `Week ${record.weekNumber} (${themes[record.weekNumber]}) is now marked as COMPLETED.`,
+                `Because Week ${record.weekNumber} is a ${record.weekNumber === 6 ? "Midpoint (Week 6)" : "Program Closing (Week 12)"} milestone, please submit your formal Growth Review (1–5 Rating & Feedback) in the Journey tab.`,
+                `Click "OK" below to proceed directly to the Growth Review section.`,
+              ]
+            : [
+                `Week ${record.weekNumber} (${themes[record.weekNumber]}) is now marked as COMPLETED.`,
+                `Log or update any follow-up tasks in the "Actions" tab if needed.`,
+                `Proceed to Week ${nextWeekNum} (${themes[nextWeekNum]}) to schedule your next meeting date & time and begin preparation.`,
+                `Click "OK" below to proceed to Week ${nextWeekNum}.`,
+              ],
+          onOk: () => {
+            if (isReviewWeek) {
+              onOpenJourneyReview();
+            } else if (record.weekNumber < 12) {
+              onAdvanceWeek(nextWeekNum);
+            }
+          },
+        });
+      }
     } else {
       setEditorFeedback({
         section: "status",
@@ -382,6 +558,21 @@ function SessionEditor({
         type: "success",
         text: "✓ Saved Confirmation: Your Mentee Q&A preparation & answers have been permanently recorded! / आपके उत्तर सफलतापूर्वक सहेजे गए।",
       });
+      setNextStepPrompt({
+        title: `✅ Mentee Q&A Submitted (Week ${record.weekNumber})`,
+        subtitle: "Here is what you need to do next:",
+        steps: [
+          `Your 7 Q&A responses for Week ${record.weekNumber} are permanently saved and shared with your Mentor (${pair.mentor.name}).`,
+          `Next, your Mentor (${pair.mentor.name}) will review your answers and record their "Mentor Guidance, Feedback & Comments" in the section right below.`,
+          `You can also log agreed action items in the "Actions" tab, and once the session finishes, click "✓ Mark Week as Completed" at the top of this week's page.`,
+        ],
+        onOk: () => {
+          mentorSectionRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        },
+      });
     } else {
       setEditorFeedback({
         section: "mentee",
@@ -434,6 +625,21 @@ function SessionEditor({
         type: "success",
         text: "✓ Saved Confirmation: Your Mentor feedback, guidance & reflection have been permanently recorded! / आपका मार्गदर्शन सफलतापूर्वक सहेजा गया।",
       });
+      setNextStepPrompt({
+        title: `✅ Mentor Feedback Submitted (Week ${record.weekNumber})`,
+        subtitle: "Here is what you need to do next:",
+        steps: [
+          `Your Mentor guidance, feedback, and reflection for ${pair.mentee.name} (Mentee) are permanently saved.`,
+          `Next Step: Click "✓ Mark Week as Completed" at the top of this Session Record to complete Week ${record.weekNumber} and proceed to the next week.`,
+          `Click "OK" below to jump to the "✓ Mark Week as Completed" button.`,
+        ],
+        onOk: () => {
+          statusCardRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        },
+      });
     } else {
       setEditorFeedback({
         section: "mentor",
@@ -446,6 +652,7 @@ function SessionEditor({
   async function saveLogisticsAndMinutes(
     e?: FormEvent<HTMLFormElement>,
     targetSection: "logistics" | "minutes" = "logistics",
+    explicitTranscript?: string,
   ) {
     if (e) e.preventDefault();
     if (!form.current) return;
@@ -455,12 +662,26 @@ function SessionEditor({
     if (data.get("meetingNotes") !== null) {
       payload.meetingNotes = String(data.get("meetingNotes") ?? "");
     }
-    if (data.get("recordingUrl") !== null) {
-      payload.recordingUrl = String(data.get("recordingUrl") ?? "");
+    if (record.recordingUrl) {
+      payload.recordingUrl = record.recordingUrl;
     }
-    payload.transcriptionNotes = transcriptionDraft;
 
-    payload.status = String(data.get("status") || base.status);
+    const latestTranscript =
+      explicitTranscript !== undefined
+        ? explicitTranscript
+        : [
+            transcriptionRef.current || transcriptionDraft || "",
+            interimRef.current || interimTranscript || "",
+          ]
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .join(" ");
+
+    transcriptionRef.current = latestTranscript;
+    setTranscriptionDraft(latestTranscript);
+    payload.transcriptionNotes = latestTranscript;
+
+    payload.status = record.status || base.status;
     const date = String(data.get("scheduledTime") ?? "");
     payload.scheduledTime = date ? date + ":00+05:30" : null;
     payload.googleMeetLink = String(data.get("googleMeetLink") ?? "");
@@ -485,9 +706,9 @@ function SessionEditor({
     }
   }
 
-  // Unrestricted community Jitsi server (meet.ffmuc.net / jitsi.riot.im) — avoids 8x8's 5-minute embedded iframe cutoff on meet.jit.si
+  // Unrestricted community Jitsi server (meet.ffmuc.net) — opens in full tab for smooth, unlimited-duration calls
   const roomName = `Margdarshan-Pair-${pair.id}-Week${record.weekNumber}`;
-  const embeddedRoomUrl = `${videoServerHost}/${roomName}#config.prejoinPageEnabled=false&config.disableDeepLinking=true&userInfo.displayName=${encodeURIComponent(
+  const fullTabRoomUrl = `https://meet.ffmuc.net/${roomName}#config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(
     isMentor ? pair.mentor.name : pair.mentee.name,
   )}`;
 
@@ -517,6 +738,7 @@ function SessionEditor({
 
       {/* Top Session Status & 1-Click Completion Header */}
       <div
+        ref={statusCardRef}
         className="record"
         style={{
           display: "flex",
@@ -602,7 +824,7 @@ function SessionEditor({
 
       <fieldset disabled={blocked} className="space-y-6">
         {/* ========================================================================= */}
-        {/* MEETING LOGISTICS & EMBEDDED VIDEO SUITE                                  */}
+        {/* MEETING LOGISTICS & VIDEO CALL                                            */}
         {/* ========================================================================= */}
         <section className="record" style={{ backgroundColor: "#f8fafc" }}>
           <h3 style={{ marginTop: 0 }}>
@@ -629,61 +851,45 @@ function SessionEditor({
             </label>
           </div>
 
-          {/* Quick Meeting Action Buttons */}
+          {/* Primary Video Room Action Buttons (Full Tab Primary) */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
+            <a
+              href={fullTabRoomUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="button"
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                padding: "8px 16px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                backgroundColor: "#4f46e5",
+                color: "#ffffff",
+                borderRadius: 8,
+              }}
+            >
+              📹 Open Video Room in Full Tab (Primary)
+            </a>
+
             {base.googleMeetLink && (
               <a
                 href={base.googleMeetLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="button"
+                className="button secondary"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
                   fontSize: 12,
                   padding: "6px 14px",
-                  backgroundColor: "#2563eb",
-                  color: "#fff",
                 }}
               >
-                📹 Launch Video Call (New Window)
+                ↗ Launch Custom Meeting Link
               </a>
             )}
-
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => setShowEmbeddedMeeting((v) => !v)}
-              style={{
-                fontSize: 12,
-                padding: "6px 14px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              🖥️{" "}
-              {showEmbeddedMeeting
-                ? "Hide Embedded Video Room"
-                : "Open In-Portal Embedded Meeting (Unlimited Time)"}
-            </button>
-
-            <a
-              href={`${videoServerHost}/${roomName}#config.prejoinPageEnabled=false`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="button secondary"
-              style={{
-                fontSize: 12,
-                padding: "6px 14px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              ↗ Open Video Room in Full Tab
-            </a>
 
             {!base.googleMeetLink && (
               <button
@@ -705,122 +911,6 @@ function SessionEditor({
               </button>
             )}
           </div>
-
-          {/* Embedded Video Call Frame */}
-          {showEmbeddedMeeting && (
-            <div
-              style={{
-                marginTop: 16,
-                border: "2px solid #cbd5e1",
-                borderRadius: 12,
-                overflow: "hidden",
-                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-              }}
-            >
-              <div
-                style={{
-                  padding: "8px 12px",
-                  backgroundColor: "#0f172a",
-                  color: "#f8fafc",
-                  display: "flex",
-                  flexWrap: "wrap",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 12,
-                }}
-              >
-                <span>
-                  🟢 Embedded Margdarshan Video Room (Week {record.weekNumber} · No 5-Min Limit)
-                </span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <select
-                    value={videoServerHost}
-                    onChange={(e) => setVideoServerHost(e.target.value)}
-                    aria-label="Select video server"
-                    style={{
-                      backgroundColor: "#1e293b",
-                      color: "#f8fafc",
-                      border: "1px solid #475569",
-                      borderRadius: 6,
-                      padding: "2px 8px",
-                      fontSize: 11,
-                      minHeight: "auto",
-                    }}
-                  >
-                    <option value="https://meet.ffmuc.net">
-                      Server 1: meet.ffmuc.net (Unlimited)
-                    </option>
-                    <option value="https://jitsi.riot.im">
-                      Server 2: jitsi.riot.im (Unlimited Backup)
-                    </option>
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowEmbeddedMeeting(false)}
-                    style={{
-                      color: "#94a3b8",
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: 12,
-                      padding: "2px 6px",
-                      minHeight: "auto",
-                    }}
-                  >
-                    ✕ Close Room
-                  </button>
-                </div>
-              </div>
-              <iframe
-                src={embeddedRoomUrl}
-                allow="camera; microphone; display-capture; fullscreen; autoplay; clipboard-write"
-                style={{ width: "100%", height: "480px", border: "none" }}
-                title="Margdarshan Embedded Video Conference"
-              />
-            </div>
-          )}
-
-          {/* Meeting Recording & Notes Row */}
-          <div className="grid" style={{ marginTop: 14 }}>
-            <label>
-              Session Recording URL / रिकॉर्डिंग लिंक (Google Drive / Meet URL)
-              <input
-                type="url"
-                name="recordingUrl"
-                placeholder="https://drive.google.com/... or recording link"
-                defaultValue={base.recordingUrl ?? ""}
-              />
-            </label>
-            <label>
-              Session Status
-              <select name="status" defaultValue={base.status}>
-                {["SCHEDULED", "RESCHEDULED", "COMPLETED", "MISSED"].map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          {base.recordingUrl && (
-            <div style={{ marginTop: 8 }}>
-              <a
-                href={base.recordingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 12,
-                  color: "#4338ca",
-                  fontWeight: 600,
-                }}
-              >
-                ▶️ Watch Saved Session Recording
-              </a>
-            </div>
-          )}
 
           <div style={{ marginTop: 12 }}>
             <button
@@ -1216,6 +1306,7 @@ function SessionEditor({
         {/* MENTOR GUIDANCE & COMMENTS (DIRECTLY BELOW MENTEE ANSWERS)               */}
         {/* ========================================================================= */}
         <section
+          ref={mentorSectionRef}
           className="record"
           style={{
             backgroundColor: "#f0fdf4",
@@ -1647,9 +1738,13 @@ function SessionEditor({
             <label>
               Speech Transcription / स्वचालित ट्रांसक्रिप्शन
               <textarea
-                value={transcriptionDraft}
+                value={displayedTranscript}
                 onChange={(e) => {
-                  setTranscriptionDraft(e.target.value);
+                  const val = e.target.value;
+                  transcriptionRef.current = val;
+                  setTranscriptionDraft(val);
+                  interimRef.current = "";
+                  setInterimTranscript("");
                   setDirty(true);
                   dirtyChanged(record.id, true);
                 }}
@@ -1690,7 +1785,7 @@ function SessionEditor({
               onClick={() => {
                 if (typeof navigator !== "undefined" && navigator.clipboard) {
                   void navigator.clipboard.writeText(
-                    transcriptionDraft || record.transcriptionNotes || "",
+                    displayedTranscript || record.transcriptionNotes || "",
                   );
                   setCopiedTranscript(true);
                   setTimeout(() => setCopiedTranscript(false), 2500);
@@ -1776,7 +1871,11 @@ function SessionEditor({
                 setDirty(false);
                 dirtyChanged(record.id, false);
                 setBase(record);
-                setTranscriptionDraft(record.transcriptionNotes || "");
+                const savedTranscript = record.transcriptionNotes || "";
+                transcriptionRef.current = savedTranscript;
+                interimRef.current = "";
+                setTranscriptionDraft(savedTranscript);
+                setInterimTranscript("");
                 form.current?.reset();
               }
             }}
@@ -1811,6 +1910,87 @@ function SessionEditor({
           </div>
         </div>
       </details>
+
+      {/* Next-Step Guidance Modal ("OK" to Proceed) */}
+      {nextStepPrompt && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.65)",
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "14px",
+              maxWidth: "520px",
+              width: "100%",
+              padding: "1.5rem",
+              boxShadow: "0 20px 45px rgba(15, 23, 42, 0.3)",
+              border: "2px solid #22c55e",
+            }}
+          >
+            <h3 style={{ margin: "0 0 0.4rem 0", color: "#14532d", fontSize: "1.15rem" }}>
+              {nextStepPrompt.title}
+            </h3>
+            <p
+              style={{
+                margin: "0 0 0.75rem 0",
+                fontWeight: 700,
+                fontSize: "0.9rem",
+                color: "#15803d",
+              }}
+            >
+              {nextStepPrompt.subtitle}
+            </p>
+            <ol
+              style={{
+                margin: "0 0 1.25rem 0",
+                paddingLeft: "1.25rem",
+                color: "#1e293b",
+                fontSize: "0.9rem",
+                lineHeight: 1.55,
+              }}
+            >
+              {nextStepPrompt.steps.map((step, idx) => (
+                <li key={idx} style={{ marginBottom: "0.45rem" }}>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const action = nextStepPrompt.onOk;
+                  setNextStepPrompt(null);
+                  action?.();
+                }}
+                style={{
+                  backgroundColor: "#16a34a",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: "0.95rem",
+                  padding: "0.65rem 1.75rem",
+                  borderRadius: "8px",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                ✓ OK, Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }
@@ -1825,6 +2005,12 @@ export default function MentoringSpace() {
   const [busy, setBusy] = useState(false);
   const [week, setWeek] = useState(1);
   const [tab, setTab] = useState("Session");
+  const [spaceNextStepPrompt, setSpaceNextStepPrompt] = useState<{
+    title: string;
+    subtitle: string;
+    steps: string[];
+    onOk?: () => void;
+  } | null>(null);
   const [history, setHistory] = useState<
     Array<{
       id: string;
@@ -1888,6 +2074,68 @@ export default function MentoringSpace() {
             : "✓ Saved Confirmation: Your pairing acceptance has been recorded! Waiting for your counterpart to accept."
           : "✓ Saved Confirmation: Your input has been saved successfully! / सहेजा गया",
       );
+      if (path === "/respond" && (body as { action?: string })?.action === "ACCEPT") {
+        const isActive = result.status === "ACTIVE";
+        setSpaceNextStepPrompt({
+          title: isActive
+            ? "🎉 Pairing Active — 12-Week Sessions Unlocked!"
+            : "✅ Pairing Invitation Accepted!",
+          subtitle: "Here is what you need to do next:",
+          steps: isActive
+            ? [
+                "Both Mentor and Mentee have accepted the pairing invitation. All 12 weekly sessions are now unlocked!",
+                'Agree on and save your "Shared growth goals" at the top of this page.',
+                "Proceed to Week 1 Session Record to schedule your first meeting time and fill your Week 1 Q&A.",
+                'Click "OK" below to proceed to Week 1.',
+              ]
+            : [
+                "Your acceptance of this mentoring relationship has been saved.",
+                "As soon as your mentoring counterpart accepts their invitation, all 12 weekly sessions will unlock automatically.",
+                "Meanwhile, you can review your profile or add Shared Growth Goals.",
+                'Click "OK" below to proceed.',
+              ],
+          onOk: () => {
+            setTab("Session");
+            setWeek(1);
+          },
+        });
+      } else if (path === "/goals") {
+        setSpaceNextStepPrompt({
+          title: "✅ Shared Growth Goals Saved!",
+          subtitle: "Here is what you need to do next:",
+          steps: [
+            "Your shared mentoring goals and target outcomes have been saved.",
+            `Proceed to your Week ${week} Session Record to schedule your meeting time and complete your weekly Q&A.`,
+            'Click "OK" below to proceed.',
+          ],
+          onOk: () => {
+            setTab("Session");
+          },
+        });
+      } else if (path === "/survey") {
+        setSpaceNextStepPrompt({
+          title: `🎉 Week ${week} Growth Review Submitted!`,
+          subtitle: "Here is what you need to do next:",
+          steps:
+            week === 6
+              ? [
+                  "Your Week 6 Midpoint Growth Review has been permanently recorded.",
+                  "Proceed to Week 7 in the Session tab to continue the second half of your 12-week mentoring journey.",
+                  'Click "OK" below to proceed to Week 7.',
+                ]
+              : [
+                  "Your Week 12 Closing Growth Review has been permanently recorded.",
+                  "Congratulations on completing the 12-Week Margdarshan Mentoring Journey!",
+                  'Click "OK" below to view your completed space.',
+                ],
+          onOk: () => {
+            if (week === 6) {
+              setTab("Session");
+              setWeek(7);
+            }
+          },
+        });
+      }
       return true;
     } catch (e) {
       setError(
@@ -2298,6 +2546,15 @@ export default function MentoringSpace() {
               blocked={blocked}
               send={send}
               dirtyChanged={dirtyChanged}
+              onAdvanceWeek={(nextWeek) => {
+                setTab("Session");
+                setWeek(nextWeek);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onOpenJourneyReview={() => {
+                setTab("Journey");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
             />
           </div>
         ))}
@@ -2635,6 +2892,87 @@ export default function MentoringSpace() {
           </p>
         )}
       </section>
+
+      {/* Space-Level Next-Step Guidance Modal ("OK" to Proceed) */}
+      {spaceNextStepPrompt && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.65)",
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "#ffffff",
+              borderRadius: "14px",
+              maxWidth: "520px",
+              width: "100%",
+              padding: "1.5rem",
+              boxShadow: "0 20px 45px rgba(15, 23, 42, 0.3)",
+              border: "2px solid #22c55e",
+            }}
+          >
+            <h3 style={{ margin: "0 0 0.4rem 0", color: "#14532d", fontSize: "1.15rem" }}>
+              {spaceNextStepPrompt.title}
+            </h3>
+            <p
+              style={{
+                margin: "0 0 0.75rem 0",
+                fontWeight: 700,
+                fontSize: "0.9rem",
+                color: "#15803d",
+              }}
+            >
+              {spaceNextStepPrompt.subtitle}
+            </p>
+            <ol
+              style={{
+                margin: "0 0 1.25rem 0",
+                paddingLeft: "1.25rem",
+                color: "#1e293b",
+                fontSize: "0.9rem",
+                lineHeight: 1.55,
+              }}
+            >
+              {spaceNextStepPrompt.steps.map((step, idx) => (
+                <li key={idx} style={{ marginBottom: "0.45rem" }}>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const action = spaceNextStepPrompt.onOk;
+                  setSpaceNextStepPrompt(null);
+                  action?.();
+                }}
+                style={{
+                  backgroundColor: "#16a34a",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: "0.95rem",
+                  padding: "0.65rem 1.75rem",
+                  borderRadius: "8px",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                ✓ OK, Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Bottom Notification Bar */}
       {(notice || error) && (
