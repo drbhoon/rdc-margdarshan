@@ -44,9 +44,48 @@ type SessionRecord = {
   meetingNotes?: string | null;
   transcriptionNotes?: string | null;
   recordingUrl?: string | null;
+  isRecordingConsentGranted?: boolean;
   postSessionReflectionMentee: string | null;
   postSessionReflectionMentor: string | null;
 };
+
+const MENTOR_MARKER = "=== [MENTOR TRANSCRIPTION] ===";
+const MENTEE_MARKER = "=== [MENTEE TRANSCRIPTION] ===";
+const LEGACY_MARKER = "=== [SHARED TRANSCRIPTION] ===";
+
+function parseDualTranscription(raw: string | null | undefined): {
+  mentor: string;
+  mentee: string;
+  legacy: string;
+} {
+  const text = (raw ?? "").trim();
+  if (!text) return { mentor: "", mentee: "", legacy: "" };
+  if (
+    !text.includes(MENTOR_MARKER) &&
+    !text.includes(MENTEE_MARKER) &&
+    !text.includes(LEGACY_MARKER)
+  ) {
+    return { mentor: "", mentee: "", legacy: text };
+  }
+
+  const extractSection = (marker: string) => {
+    const startIdx = text.indexOf(marker);
+    if (startIdx === -1) return "";
+    const contentStart = startIdx + marker.length;
+    const nextIndices = [MENTOR_MARKER, MENTEE_MARKER, LEGACY_MARKER]
+      .map((m) => text.indexOf(m, contentStart))
+      .filter((idx) => idx !== -1);
+    const endIdx =
+      nextIndices.length > 0 ? Math.min(...nextIndices) : text.length;
+    return text.slice(contentStart, endIdx).trim();
+  };
+
+  return {
+    mentor: extractSection(MENTOR_MARKER),
+    mentee: extractSection(MENTEE_MARKER),
+    legacy: extractSection(LEGACY_MARKER),
+  };
+}
 
 type Action = {
   id: string;
@@ -154,6 +193,7 @@ function SessionEditor({
   userCode,
   userRole,
   blocked,
+  firstPendingWeek,
   send,
   dirtyChanged,
   onAdvanceWeek,
@@ -164,6 +204,7 @@ function SessionEditor({
   userCode: string;
   userRole: string;
   blocked: boolean;
+  firstPendingWeek: number;
   send: Send;
   dirtyChanged: (id: string, dirty: boolean) => void;
   onAdvanceWeek: (nextWeek: number) => void;
@@ -172,16 +213,33 @@ function SessionEditor({
   const form = useRef<HTMLFormElement>(null);
   const statusCardRef = useRef<HTMLDivElement>(null);
   const mentorSectionRef = useRef<HTMLElement>(null);
+
+  const isMentor = userCode === pair.mentorCode || userRole === "ADMIN";
+  const isMentee = userCode === pair.menteeCode;
+
+  const parsedSavedTranscript = parseDualTranscription(record.transcriptionNotes);
+  const mySavedTranscript = isMentor
+    ? parsedSavedTranscript.mentor
+    : parsedSavedTranscript.mentee || parsedSavedTranscript.legacy;
+
   const [base, setBase] = useState(record);
   const [dirty, setDirty] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionDraft, setTranscriptionDraft] = useState(
-    record.transcriptionNotes || "",
+    mySavedTranscript || "",
   );
   const [interimTranscript, setInterimTranscript] = useState("");
   const [copiedTranscript, setCopiedTranscript] = useState(false);
+  const [localMeetingJoined, setLocalMeetingJoined] = useState(
+    Boolean(record.isRecordingConsentGranted),
+  );
+  const [showMissedPrompt, setShowMissedPrompt] = useState(false);
+  const [missedReasonDraft, setMissedReasonDraft] = useState("");
+
   const recognitionRef = useRef<any>(null);
-  const transcriptionRef = useRef<string>(record.transcriptionNotes || "");
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const transcriptionRef = useRef<string>(mySavedTranscript || "");
   const interimRef = useRef<string>("");
   const isTranscribingRef = useRef<boolean>(false);
   const lastRecordIdRef = useRef<string>(record.id);
@@ -202,8 +260,14 @@ function SessionEditor({
     onOk?: () => void;
   } | null>(null);
 
-  const isMentor = userCode === pair.mentorCode || userRole === "ADMIN";
-  const isMentee = userCode === pair.menteeCode;
+  const isFutureLockedWeek =
+    record.weekNumber > firstPendingWeek &&
+    record.status !== "COMPLETED" &&
+    record.status !== "MISSED";
+  const effectiveBlocked = blocked || isFutureLockedWeek;
+  const hasJoinedMeeting = Boolean(
+    record.isRecordingConsentGranted || localMeetingJoined,
+  );
 
   const isMenteeQaRecorded = Boolean(
     record.agenda?.trim() &&
@@ -220,52 +284,103 @@ function SessionEditor({
       record.postSessionReflectionMentor?.trim(),
   );
 
-  const isMenteeBoxLocked = !isMentee || isMenteeQaRecorded;
-  const isMentorBoxLocked = !isMenteeQaRecorded || isMentorQaRecorded;
+  const isMenteeBoxLocked = !isMentee || isMenteeQaRecorded || isFutureLockedWeek;
+  const isMentorBoxLocked =
+    !isMenteeQaRecorded || isMentorQaRecorded || isFutureLockedWeek;
 
   if (!dirty && !isTranscribing && base.version !== record.version) {
     setBase(record);
-    if (record.transcriptionNotes && record.transcriptionNotes !== transcriptionRef.current) {
-      transcriptionRef.current = record.transcriptionNotes;
-      setTranscriptionDraft(record.transcriptionNotes);
+    if (mySavedTranscript && mySavedTranscript !== transcriptionRef.current) {
+      transcriptionRef.current = mySavedTranscript;
+      setTranscriptionDraft(mySavedTranscript);
     }
   }
 
   useEffect(() => {
+    if (record.isRecordingConsentGranted) {
+      setLocalMeetingJoined(true);
+    }
+  }, [record.isRecordingConsentGranted]);
+
+  useEffect(() => {
     if (record.id !== lastRecordIdRef.current) {
       lastRecordIdRef.current = record.id;
-      const initialNotes = record.transcriptionNotes || "";
+      const initialNotes = mySavedTranscript || "";
       transcriptionRef.current = initialNotes;
       interimRef.current = "";
       setTranscriptionDraft(initialNotes);
       setInterimTranscript("");
+      setLocalMeetingJoined(Boolean(record.isRecordingConsentGranted));
       form.current?.reset();
       return;
     }
 
     if (!dirty && !isTranscribingRef.current) {
       form.current?.reset();
-      if (
-        record.transcriptionNotes &&
-        record.transcriptionNotes !== transcriptionRef.current
-      ) {
-        transcriptionRef.current = record.transcriptionNotes;
-        setTranscriptionDraft(record.transcriptionNotes);
+      if (mySavedTranscript && mySavedTranscript !== transcriptionRef.current) {
+        transcriptionRef.current = mySavedTranscript;
+        setTranscriptionDraft(mySavedTranscript);
       }
     }
-  }, [base, dirty, record.id, record.transcriptionNotes]);
+  }, [
+    base,
+    dirty,
+    mySavedTranscript,
+    record.id,
+    record.isRecordingConsentGranted,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      isTranscribingRef.current = false;
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current);
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // ignore cleanup error
+      }
+    };
+  }, []);
 
   const displayedTranscript = interimTranscript
     ? transcriptionDraft
-      ? `${transcriptionDraft.trim()} ${interimTranscript}`
+      ? `${transcriptionRef.current || transcriptionDraft} ${interimTranscript}`
       : interimTranscript
     : transcriptionDraft;
 
-  // Handle Speech-to-Text Auto-Transcription
+  // Background silent sync of speaker's own transcript so long calls never lose progress
+  const syncMyTranscriptSilently = async (textToSave: string) => {
+    if (!textToSave.trim()) return;
+    try {
+      await fetch(`/api/pair/${pair.id}/session/${record.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          version: record.version,
+          ...(isMentor
+            ? { mentorTranscription: textToSave }
+            : { menteeTranscription: textToSave }),
+        }),
+      });
+    } catch {
+      // ignore transient network blip during background auto-sync
+    }
+  };
+
+  // Handle Speech-to-Text Auto-Transcription (Unlimited Duration — Auto-Recovers Across Browser Segment Limits)
   const toggleSpeechRecognition = async () => {
     if (isTranscribing) {
       isTranscribingRef.current = false;
       setIsTranscribing(false);
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+        restartTimerRef.current = null;
+      }
+      if (autoSaveTimerRef.current) {
+        clearInterval(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
 
       // Flush any live interim speech into the permanent transcript immediately
       if (interimRef.current.trim()) {
@@ -327,84 +442,108 @@ function SessionEditor({
       return;
     }
 
-    try {
-      const rec = new SpeechRec();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = "en-IN";
+    const startRecognitionSegment = () => {
+      if (!isTranscribingRef.current) return;
+      try {
+        const rec = new SpeechRec();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.lang = "en-IN";
 
-      rec.onresult = (event: any) => {
-        let finalChunk = "";
-        let liveInterim = "";
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcriptPiece = event.results[i][0]?.transcript || "";
-          if (event.results[i].isFinal) {
-            finalChunk += transcriptPiece + " ";
+        rec.onresult = (event: any) => {
+          let finalChunk = "";
+          let liveInterim = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcriptPiece = event.results[i][0]?.transcript || "";
+            if (event.results[i].isFinal) {
+              finalChunk += transcriptPiece + " ";
+            } else {
+              liveInterim += transcriptPiece + " ";
+            }
+          }
+
+          if (finalChunk.trim()) {
+            const updated = transcriptionRef.current
+              ? `${transcriptionRef.current.trim()} ${finalChunk.trim()}`
+              : finalChunk.trim();
+            transcriptionRef.current = updated;
+            setTranscriptionDraft(updated);
+            setDirty(true);
+            dirtyChanged(record.id, true);
+          }
+
+          const cleanInterim = liveInterim.trim();
+          interimRef.current = cleanInterim;
+          setInterimTranscript(cleanInterim);
+          if (cleanInterim) {
+            setDirty(true);
+            dirtyChanged(record.id, true);
+          }
+        };
+
+        rec.onerror = (event: any) => {
+          console.warn("Speech recognition segment notice:", event.error);
+          if (
+            event.error === "not-allowed" ||
+            event.error === "service-not-allowed"
+          ) {
+            isTranscribingRef.current = false;
+            setIsTranscribing(false);
+            if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+            if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current);
+          }
+        };
+
+        rec.onend = () => {
+          // Flush any remaining interim words so nothing ever vanishes when browser rotates recognition segments
+          if (interimRef.current.trim()) {
+            const updated = transcriptionRef.current
+              ? `${transcriptionRef.current.trim()} ${interimRef.current.trim()}`
+              : interimRef.current.trim();
+            transcriptionRef.current = updated;
+            setTranscriptionDraft(updated);
+            interimRef.current = "";
+            setInterimTranscript("");
+          }
+
+          // Browser speech API closes segments every ~2-3 minutes or after silence; spawn a fresh instance automatically!
+          if (isTranscribingRef.current) {
+            if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+            restartTimerRef.current = setTimeout(() => {
+              if (isTranscribingRef.current) {
+                startRecognitionSegment();
+              }
+            }, 220);
           } else {
-            liveInterim += transcriptPiece + " ";
+            setIsTranscribing(false);
           }
-        }
+        };
 
-        if (finalChunk.trim()) {
-          const updated = transcriptionRef.current
-            ? `${transcriptionRef.current.trim()} ${finalChunk.trim()}`
-            : finalChunk.trim();
-          transcriptionRef.current = updated;
-          setTranscriptionDraft(updated);
-          setDirty(true);
-          dirtyChanged(record.id, true);
-        }
-
-        const cleanInterim = liveInterim.trim();
-        interimRef.current = cleanInterim;
-        setInterimTranscript(cleanInterim);
-        if (cleanInterim) {
-          setDirty(true);
-          dirtyChanged(record.id, true);
-        }
-      };
-
-      rec.onerror = (event: any) => {
-        console.warn("Speech recognition notice:", event.error);
-        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-          isTranscribingRef.current = false;
-          setIsTranscribing(false);
-        }
-      };
-
-      rec.onend = () => {
-        // Flush any remaining interim words so nothing ever vanishes on pause
-        if (interimRef.current.trim()) {
-          const updated = transcriptionRef.current
-            ? `${transcriptionRef.current.trim()} ${interimRef.current.trim()}`
-            : interimRef.current.trim();
-          transcriptionRef.current = updated;
-          setTranscriptionDraft(updated);
-          interimRef.current = "";
-          setInterimTranscript("");
-        }
-        // Automatically keep listening if user hasn't clicked Stop yet
+        recognitionRef.current = rec;
+        rec.start();
+      } catch (err) {
+        console.warn("Speech recognition segment restart retry:", err);
         if (isTranscribingRef.current) {
-          try {
-            rec.start();
-            return;
-          } catch {
-            // Fall through if browser blocks auto-restart
-          }
+          if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+          restartTimerRef.current = setTimeout(() => {
+            if (isTranscribingRef.current) {
+              startRecognitionSegment();
+            }
+          }, 600);
         }
-        isTranscribingRef.current = false;
-        setIsTranscribing(false);
-      };
+      }
+    };
 
-      isTranscribingRef.current = true;
-      rec.start();
-      recognitionRef.current = rec;
-      setIsTranscribing(true);
-    } catch (err) {
-      console.error("Speech recognition startup error:", err);
-      isTranscribingRef.current = false;
-      setIsTranscribing(false);
-    }
+    isTranscribingRef.current = true;
+    setIsTranscribing(true);
+    startRecognitionSegment();
+
+    if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setInterval(() => {
+      if (isTranscribingRef.current && transcriptionRef.current.trim()) {
+        void syncMyTranscriptSilently(transcriptionRef.current);
+      }
+    }, 20000);
   };
 
   const downloadTranscriptFile = () => {
@@ -415,19 +554,22 @@ function SessionEditor({
     const effectiveMeetingNotes =
       liveMinutesInput.trim() || record.meetingNotes?.trim() || "(None recorded)";
 
-    const combinedTranscript = [
-      transcriptionRef.current ||
-        transcriptionDraft ||
-        record.transcriptionNotes ||
-        "",
+    const liveOwnTranscript = [
+      transcriptionRef.current || transcriptionDraft || mySavedTranscript || "",
       interimRef.current || interimTranscript || "",
     ]
       .map((s) => s.trim())
       .filter(Boolean)
       .join(" ");
 
-    const effectiveTranscript =
-      combinedTranscript || "(No transcription text recorded)";
+    const mentorFinalTranscript = isMentor
+      ? liveOwnTranscript || parsedSavedTranscript.mentor
+      : parsedSavedTranscript.mentor;
+    const menteeFinalTranscript = !isMentor
+      ? liveOwnTranscript ||
+        parsedSavedTranscript.mentee ||
+        parsedSavedTranscript.legacy
+      : parsedSavedTranscript.mentee || parsedSavedTranscript.legacy;
 
     const content = [
       `Margdarshan Mentoring Platform — Session Record & Transcript`,
@@ -440,8 +582,11 @@ function SessionEditor({
       `LIVE MEETING MINUTES & DECISIONS:`,
       effectiveMeetingNotes,
       ``,
-      `SPEECH TRANSCRIPTION:`,
-      effectiveTranscript,
+      `MENTOR SPEECH TRANSCRIPTION (${pair.mentor.name}):`,
+      mentorFinalTranscript || "(No Mentor speech transcription recorded)",
+      ``,
+      `MENTEE SPEECH TRANSCRIPTION (${pair.mentee.name}):`,
+      menteeFinalTranscript || "(No Mentee speech transcription recorded)",
     ].join("\r\n");
 
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
@@ -456,13 +601,59 @@ function SessionEditor({
     setEditorFeedback({
       section: "minutes",
       type: "success",
-      text: `✓ Downloaded "Margdarshan-Week-${record.weekNumber}-Transcript.txt" to your device's Downloads folder!`,
+      text: `✓ Downloaded "Margdarshan-Week-${record.weekNumber}-Transcript.txt" (including both Mentor & Mentee transcripts)!`,
     });
   };
 
-  // 1-Click Toggle Session Status
+  const handleJoinVideoMeeting = () => {
+    setLocalMeetingJoined(true);
+    void send("/session/" + record.id, "PUT", {
+      version: record.version,
+      markMeetingJoined: true,
+    });
+  };
+
+  // 1-Click Toggle Session Status (With Sequential Week + Meeting Joined + Q&A Checks)
   const toggleSessionCompletion = async () => {
-    const nextStatus = record.status === "COMPLETED" ? "SCHEDULED" : "COMPLETED";
+    const isReopening =
+      record.status === "COMPLETED" || record.status === "MISSED";
+    const nextStatus = isReopening ? "SCHEDULED" : "COMPLETED";
+
+    if (!isReopening) {
+      if (isFutureLockedWeek) {
+        setEditorFeedback({
+          section: "status",
+          type: "error",
+          text: `⚠️ Cannot complete Week ${record.weekNumber} while Week ${firstPendingWeek} is still running/pending. Please complete (or mark as Missed) Week ${firstPendingWeek} first.`,
+        });
+        return;
+      }
+      if (!record.scheduledTime) {
+        setEditorFeedback({
+          section: "status",
+          type: "error",
+          text: `⚠️ Cannot mark Week ${record.weekNumber} as Completed yet: Please select and save the Meeting Date & Time in Meeting Logistics below first.`,
+        });
+        return;
+      }
+      if (!hasJoinedMeeting && userRole !== "ADMIN") {
+        setEditorFeedback({
+          section: "status",
+          type: "error",
+          text: `⚠️ Cannot mark Week ${record.weekNumber} as Completed without launching/joining the Video Meeting. Please click "📹 Join / Launch Video Meeting" first (or if this week was missed for a genuine reason, click "⚠️ Mark Week as Missed").`,
+        });
+        return;
+      }
+      if (!isMenteeQaRecorded && userRole !== "ADMIN") {
+        setEditorFeedback({
+          section: "status",
+          type: "error",
+          text: `⚠️ Cannot mark Week ${record.weekNumber} as Completed yet: Mentee Q&A preparation & answers must be submitted first.`,
+        });
+        return;
+      }
+    }
+
     const payload = {
       version: record.version,
       status: nextStatus,
@@ -473,7 +664,10 @@ function SessionEditor({
       setEditorFeedback({
         section: "status",
         type: "success",
-        text: `✓ Saved Confirmation: Week ${record.weekNumber} status updated to ${nextStatus}!`,
+        text:
+          nextStatus === "COMPLETED"
+            ? `✓ Saved Confirmation: Week ${record.weekNumber} marked as COMPLETED!`
+            : `✓ Saved Confirmation: Week ${record.weekNumber} has been re-opened!`,
       });
       if (nextStatus === "COMPLETED") {
         const isReviewWeek = [6, 12].includes(record.weekNumber);
@@ -506,8 +700,50 @@ function SessionEditor({
       setEditorFeedback({
         section: "status",
         type: "error",
-        text: "⚠️ Could not update session status. Please retry.",
+        text: "⚠️ Could not update session status. Please check the requirements and retry.",
       });
+    }
+  };
+
+  const confirmMarkAsMissed = async () => {
+    if (!missedReasonDraft.trim()) {
+      setEditorFeedback({
+        section: "status",
+        type: "error",
+        text: "⚠️ Please enter the genuine reason for missing this week's session before confirming.",
+      });
+      return;
+    }
+    const payload = {
+      version: record.version,
+      status: "MISSED",
+      missedReason: missedReasonDraft.trim(),
+    };
+    if (await send("/session/" + record.id, "PUT", payload)) {
+      setShowMissedPrompt(false);
+      setMissedReasonDraft("");
+      setDirty(false);
+      dirtyChanged(record.id, false);
+      const nextWeekNum = record.weekNumber < 12 ? record.weekNumber + 1 : 12;
+      setEditorFeedback({
+        section: "status",
+        type: "success",
+        text: `✓ Saved Confirmation: Week ${record.weekNumber} recorded as MISSED (with reason) and Week ${nextWeekNum} is now unlocked.`,
+      });
+      if (record.weekNumber < 12) {
+        setNextStepPrompt({
+          title: `⚠️ Week ${record.weekNumber} Recorded as Missed`,
+          subtitle: "Here is what you need to do next:",
+          steps: [
+            `Week ${record.weekNumber} has been marked as MISSED with your recorded reason.`,
+            `Week ${nextWeekNum} (${themes[nextWeekNum]}) is now unlocked.`,
+            `Click "OK" below to proceed to Week ${nextWeekNum} and schedule your upcoming session.`,
+          ],
+          onOk: () => {
+            onAdvanceWeek(nextWeekNum);
+          },
+        });
+      }
     }
   };
 
@@ -649,6 +885,13 @@ function SessionEditor({
     }
   };
 
+  // Dedicated video room URL for this pair & week
+  const roomName = `Margdarshan-Pair-${pair.id}-Week${record.weekNumber}`;
+  const fullTabRoomUrl = `https://meet.ffmuc.net/${roomName}#config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(
+    isMentor ? pair.mentor.name : pair.mentee.name,
+  )}`;
+  const canonicalRoomUrl = `https://meet.ffmuc.net/${roomName}`;
+
   async function saveLogisticsAndMinutes(
     e?: FormEvent<HTMLFormElement>,
     targetSection: "logistics" | "minutes" = "logistics",
@@ -656,6 +899,15 @@ function SessionEditor({
   ) {
     if (e) e.preventDefault();
     if (!form.current) return;
+    if (isFutureLockedWeek) {
+      setEditorFeedback({
+        section: targetSection,
+        type: "error",
+        text: `⚠️ Week ${record.weekNumber} is locked while Week ${firstPendingWeek} is still in progress. Please complete Week ${firstPendingWeek} first.`,
+      });
+      return;
+    }
+
     const data = new FormData(form.current);
     const payload: Record<string, unknown> = { version: record.version };
 
@@ -679,12 +931,26 @@ function SessionEditor({
 
     transcriptionRef.current = latestTranscript;
     setTranscriptionDraft(latestTranscript);
-    payload.transcriptionNotes = latestTranscript;
+    if (isMentor) {
+      payload.mentorTranscription = latestTranscript;
+    } else {
+      payload.menteeTranscription = latestTranscript;
+    }
 
     payload.status = record.status || base.status;
     const date = String(data.get("scheduledTime") ?? "");
+    if (targetSection === "logistics" && !date) {
+      setEditorFeedback({
+        section: "logistics",
+        type: "error",
+        text: "⚠️ Please select the Meeting Date & Time (IST) before clicking Save Meeting Schedule.",
+      });
+      return;
+    }
     payload.scheduledTime = date ? date + ":00+05:30" : null;
-    payload.googleMeetLink = String(data.get("googleMeetLink") ?? "");
+    payload.googleMeetLink = date
+      ? record.googleMeetLink || canonicalRoomUrl
+      : record.googleMeetLink || "";
 
     if (await send("/session/" + record.id, "PUT", payload)) {
       setDirty(false);
@@ -694,8 +960,8 @@ function SessionEditor({
         type: "success",
         text:
           targetSection === "minutes"
-            ? `✓ Saved Confirmation: Meeting minutes & speech transcription saved in Week ${record.weekNumber} Session Record!`
-            : `✓ Saved Confirmation: Meeting time, video call link & logistics saved for Week ${record.weekNumber}!`,
+            ? `✓ Saved Confirmation: Your (${isMentor ? "Mentor" : "Mentee"}) speech transcription & meeting minutes are saved and now visible to both Mentor and Mentee below!`
+            : `✓ Saved Confirmation: Week ${record.weekNumber} Meeting Date & Time scheduled! Status is now SCHEDULED.`,
       });
     } else {
       setEditorFeedback({
@@ -706,18 +972,22 @@ function SessionEditor({
     }
   }
 
-  // Unrestricted community Jitsi server (meet.ffmuc.net) — opens in full tab for smooth, unlimited-duration calls
-  const roomName = `Margdarshan-Pair-${pair.id}-Week${record.weekNumber}`;
-  const fullTabRoomUrl = `https://meet.ffmuc.net/${roomName}#config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(
-    isMentor ? pair.mentor.name : pair.mentee.name,
-  )}`;
-
   const lockedTextareaStyle = {
     backgroundColor: "#f8fafc",
     color: "#334155",
     borderColor: "#cbd5e1",
     cursor: "not-allowed",
   };
+
+  // Compute display status label so unscheduled sessions show "NOT SCHEDULED / PENDING" instead of "SCHEDULED"
+  const statusDisplay =
+    record.status === "COMPLETED"
+      ? { label: "✓ COMPLETED", bg: "#22c55e", color: "#ffffff" }
+      : record.status === "MISSED"
+        ? { label: "⚠️ MISSED (GENUINE REASON)", bg: "#d97706", color: "#ffffff" }
+        : record.scheduledTime
+          ? { label: "📅 SCHEDULED", bg: "#4f46e5", color: "#ffffff" }
+          : { label: "⏳ NOT SCHEDULED (PENDING)", bg: "#f59e0b", color: "#ffffff" };
 
   return (
     <form
@@ -736,6 +1006,50 @@ function SessionEditor({
         </p>
       )}
 
+      {isFutureLockedWeek && (
+        <div
+          role="alert"
+          style={{
+            padding: "12px 16px",
+            borderRadius: 10,
+            backgroundColor: "#fffbeb",
+            border: "2px solid #f59e0b",
+            color: "#92400e",
+            fontSize: 13,
+            fontWeight: 600,
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <div>
+            🔒 <strong>Sequential Week Progression:</strong> Week{" "}
+            {firstPendingWeek} is currently running/pending. Jumping ahead to
+            schedule or complete Week {record.weekNumber} is restricted until
+            Week {firstPendingWeek} is marked as <strong>Completed</strong> (or{" "}
+            <strong>Missed</strong> for a genuine reason).
+          </div>
+          <button
+            type="button"
+            onClick={() => onAdvanceWeek(firstPendingWeek)}
+            style={{
+              backgroundColor: "#d97706",
+              color: "#ffffff",
+              fontWeight: 700,
+              fontSize: 12,
+              padding: "6px 14px",
+              borderRadius: 8,
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            ← Go to Active Week {firstPendingWeek}
+          </button>
+        </div>
+      )}
+
       {/* Top Session Status & 1-Click Completion Header */}
       <div
         ref={statusCardRef}
@@ -746,8 +1060,18 @@ function SessionEditor({
           alignItems: "center",
           justifyContent: "space-between",
           gap: 12,
-          backgroundColor: record.status === "COMPLETED" ? "#f0fdf4" : "#f8fafc",
-          borderColor: record.status === "COMPLETED" ? "#86efac" : "#e2e8f0",
+          backgroundColor:
+            record.status === "COMPLETED"
+              ? "#f0fdf4"
+              : record.status === "MISSED"
+                ? "#fffbeb"
+                : "#f8fafc",
+          borderColor:
+            record.status === "COMPLETED"
+              ? "#86efac"
+              : record.status === "MISSED"
+                ? "#fde68a"
+                : "#e2e8f0",
         }}
       >
         <div>
@@ -762,31 +1086,91 @@ function SessionEditor({
           >
             Session Status
           </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 4 }}>
             <span
               className="pill"
               style={{
-                backgroundColor: record.status === "COMPLETED" ? "#22c55e" : "#6366f1",
-                color: "#ffffff",
+                backgroundColor: statusDisplay.bg,
+                color: statusDisplay.color,
                 fontWeight: 700,
               }}
             >
-              {record.status === "COMPLETED" ? "✓ COMPLETED" : record.status}
+              {statusDisplay.label}
             </span>
             <span style={{ fontSize: 13, color: "#475569" }}>
               Week {record.weekNumber} of 12 · {themes[record.weekNumber]}
             </span>
+            {record.scheduledTime && (
+              <span
+                className="pill"
+                style={{
+                  backgroundColor: "#eef2ff",
+                  color: "#3730a3",
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                🕒 {displayTime(record.scheduledTime)}
+              </span>
+            )}
+            {hasJoinedMeeting && (
+              <span
+                className="pill"
+                style={{
+                  backgroundColor: "#dcfce7",
+                  color: "#166534",
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                ✓ Video Meeting Joined
+              </span>
+            )}
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+          {record.status !== "COMPLETED" &&
+            record.status !== "MISSED" &&
+            !isFutureLockedWeek && (
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={() => setShowMissedPrompt((v) => !v)}
+                className="secondary"
+                style={{
+                  fontWeight: 700,
+                  padding: "8px 14px",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  color: "#92400e",
+                  borderColor: "#f59e0b",
+                  backgroundColor: "#fffbeb",
+                }}
+              >
+                ⚠️ Mark Week as Missed (Genuine Reason)
+              </button>
+            )}
+
           <button
             type="button"
-            disabled={blocked}
+            disabled={
+              blocked ||
+              (isFutureLockedWeek &&
+                record.status !== "COMPLETED" &&
+                record.status !== "MISSED")
+            }
             onClick={toggleSessionCompletion}
             style={{
-              backgroundColor: record.status === "COMPLETED" ? "#e2e8f0" : "#16a34a",
-              color: record.status === "COMPLETED" ? "#334155" : "#ffffff",
+              backgroundColor:
+                record.status === "COMPLETED" || record.status === "MISSED"
+                  ? "#e2e8f0"
+                  : "#16a34a",
+              color:
+                record.status === "COMPLETED" || record.status === "MISSED"
+                  ? "#334155"
+                  : "#ffffff",
               fontWeight: 700,
               padding: "8px 16px",
               borderRadius: "8px",
@@ -795,11 +1179,65 @@ function SessionEditor({
               border: "none",
             }}
           >
-            {record.status === "COMPLETED"
+            {record.status === "COMPLETED" || record.status === "MISSED"
               ? "Re-open Week / पुनः खोलें"
               : "✓ Mark Week as Completed / सत्र पूर्ण हुआ"}
           </button>
         </div>
+
+        {showMissedPrompt && (
+          <div
+            style={{
+              width: "100%",
+              marginTop: 6,
+              padding: "12px 14px",
+              borderRadius: 10,
+              backgroundColor: "#fffbeb",
+              border: "2px solid #f59e0b",
+            }}
+          >
+            <label style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
+              Genuine Reason for Missing Week {record.weekNumber} (Mandatory):
+              <textarea
+                value={missedReasonDraft}
+                onChange={(e) => setMissedReasonDraft(e.target.value)}
+                placeholder="e.g. Plant dispatch emergency / medical leave / official outstation audit..."
+                rows={2}
+                style={{ marginTop: 6, backgroundColor: "#ffffff" }}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => void confirmMarkAsMissed()}
+                style={{
+                  backgroundColor: "#d97706",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                ✓ Confirm Missed Week &amp; Unlock Next Week
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setShowMissedPrompt(false);
+                  setMissedReasonDraft("");
+                }}
+                style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8 }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {editorFeedback?.section === "status" && (
           <div
             role="status"
@@ -822,46 +1260,56 @@ function SessionEditor({
         )}
       </div>
 
-      <fieldset disabled={blocked} className="space-y-6">
+      <fieldset disabled={effectiveBlocked} className="space-y-6">
         {/* ========================================================================= */}
-        {/* MEETING LOGISTICS & VIDEO CALL                                            */}
+        {/* MEETING LOGISTICS & VIDEO CALL (SINGLE UNIFIED MEETING OPTION)            */}
         {/* ========================================================================= */}
         <section className="record" style={{ backgroundColor: "#f8fafc" }}>
           <h3 style={{ marginTop: 0 }}>
             Meeting Logistics & Video Call / बैठक और वीडियो कॉल
           </h3>
 
-          <div className="grid">
-            <label>
-              Meeting time (IST) / बैठक का समय
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "flex-end",
+              gap: 12,
+            }}
+          >
+            <label style={{ flex: "1 1 260px", marginBottom: 0 }}>
+              Meeting Date &amp; Time (IST) / बैठक का दिनांक और समय
               <input
                 type="datetime-local"
                 name="scheduledTime"
                 defaultValue={istInput(base.scheduledTime)}
               />
             </label>
-            <label>
-              Google Meet or Video Call Link / बैठक का लिंक
-              <input
-                type="url"
-                name="googleMeetLink"
-                placeholder="https://meet.google.com/... or paste video URL"
-                defaultValue={base.googleMeetLink ?? ""}
-              />
-            </label>
-          </div>
 
-          {/* Primary Video Room Action Buttons (Full Tab Primary) */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
+            <button
+              type="button"
+              onClick={() => void saveLogisticsAndMinutes(undefined, "logistics")}
+              className="secondary"
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                padding: "9px 16px",
+                borderRadius: 8,
+              }}
+            >
+              💾 Save Meeting Schedule
+            </button>
+
             <a
               href={fullTabRoomUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={handleJoinVideoMeeting}
               className="button"
               style={{
                 fontSize: 13,
                 fontWeight: 700,
-                padding: "8px 16px",
+                padding: "9px 18px",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
@@ -870,79 +1318,35 @@ function SessionEditor({
                 borderRadius: 8,
               }}
             >
-              📹 Open Video Room in Full Tab (Primary)
+              📹 Join / Launch Video Meeting (Full Tab)
             </a>
-
-            {base.googleMeetLink && (
-              <a
-                href={base.googleMeetLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="button secondary"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 12,
-                  padding: "6px 14px",
-                }}
-              >
-                ↗ Launch Custom Meeting Link
-              </a>
-            )}
-
-            {!base.googleMeetLink && (
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => {
-                  const input = form.current?.querySelector<HTMLInputElement>(
-                    'input[name="googleMeetLink"]',
-                  );
-                  if (input) {
-                    input.value = `https://meet.ffmuc.net/Margdarshan-Pair-${pair.id}-Week${record.weekNumber}`;
-                    setDirty(true);
-                    dirtyChanged(record.id, true);
-                  }
-                }}
-                style={{ fontSize: 12, padding: "6px 14px" }}
-              >
-                🔗 Auto-Generate Unlimited Meeting Link
-              </button>
-            )}
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <button
-              type="button"
-              onClick={() => void saveLogisticsAndMinutes(undefined, "logistics")}
-              className="secondary"
-              style={{ fontSize: 12, padding: "6px 14px" }}
+          <p className="muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+            Step 1: Select &amp; save your Meeting Date &amp; Time above (changes status from <em>Not Scheduled</em> to <em>Scheduled</em>). Step 2: Click <strong>📹 Join / Launch Video Meeting</strong> to open your pair&apos;s video room.
+          </p>
+
+          {editorFeedback?.section === "logistics" && (
+            <div
+              role="status"
+              style={{
+                marginTop: 10,
+                padding: "8px 12px",
+                borderRadius: 8,
+                backgroundColor:
+                  editorFeedback.type === "error" ? "#fef2f2" : "#dcfce7",
+                border: `1px solid ${
+                  editorFeedback.type === "error" ? "#fecaca" : "#86efac"
+                }`,
+                color:
+                  editorFeedback.type === "error" ? "#b91c1c" : "#166534",
+                fontWeight: 700,
+                fontSize: 13,
+              }}
             >
-              💾 Save Meeting Logistics
-            </button>
-            {editorFeedback?.section === "logistics" && (
-              <div
-                role="status"
-                style={{
-                  marginTop: 8,
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  backgroundColor:
-                    editorFeedback.type === "error" ? "#fef2f2" : "#dcfce7",
-                  border: `1px solid ${
-                    editorFeedback.type === "error" ? "#fecaca" : "#86efac"
-                  }`,
-                  color:
-                    editorFeedback.type === "error" ? "#b91c1c" : "#166534",
-                  fontWeight: 700,
-                  fontSize: 13,
-                }}
-              >
-                {editorFeedback.text}
-              </div>
-            )}
-          </div>
+              {editorFeedback.text}
+            </div>
+          )}
         </section>
 
         {/* ========================================================================= */}
@@ -1653,14 +2057,15 @@ function SessionEditor({
           >
             <div>
               <h3 style={{ margin: 0 }}>
-                In-Portal Meeting Minutes & Live Transcription
+                In-Portal Meeting Minutes &amp; Dual Speech Transcription (Mentor &amp; Mentee)
               </h3>
               <p className="muted" style={{ fontSize: 12, margin: "2px 0 0 0" }}>
-                Saved in <strong>Week {record.weekNumber} → Session Record → Saved Meeting Minutes &amp; Transcript</strong> (and downloadable as a <code>.txt</code> file).
+                Your microphone records <strong>{isMentor ? `Mentor (${pair.mentor.name})` : `Mentee (${pair.mentee.name})`}</strong> speech on your page without time limits (auto-saves every 20s). After saving, <strong>both Mentor &amp; Mentee can view and download both speech transcriptions</strong> below.
               </p>
             </div>
             <button
               type="button"
+              disabled={isFutureLockedWeek}
               onClick={() => void toggleSpeechRecognition()}
               style={{
                 display: "inline-flex",
@@ -1673,12 +2078,12 @@ function SessionEditor({
                 backgroundColor: isTranscribing ? "#ef4444" : "#4f46e5",
                 color: "#ffffff",
                 border: "none",
-                cursor: "pointer",
+                cursor: isFutureLockedWeek ? "not-allowed" : "pointer",
               }}
             >
               {isTranscribing
                 ? "⏹️ Stop & Auto-Save Voice Transcribe"
-                : "🎙️ Start Auto-Transcribe"}
+                : `🎙️ Start Auto-Transcribe (${isMentor ? "Mentor Speech" : "Mentee Speech"})`}
             </button>
           </div>
 
@@ -1693,7 +2098,7 @@ function SessionEditor({
               color: "#3730a3",
             }}
           >
-            📍 <strong>Where Transcription is Saved:</strong> Spoken words appear live in the <strong>Speech Transcription</strong> box below. When you click <strong>⏹️ Stop &amp; Auto-Save</strong> or <strong>💾 Save Meeting Notes &amp; Transcription</strong>, it is saved directly in this <strong>Week {record.weekNumber} Session Record</strong> (shown in the <em>Saved Transcript Record</em> card below) and can also be downloaded to your computer/phone using <strong>⬇️ Download Transcript (.txt)</strong>.
+            📍 <strong>How Dual Mentor &amp; Mentee Speech Transcription Works:</strong> Because browser microphones capture the local speaker, turning on <strong>🎙️ Start Auto-Transcribe</strong> on the <strong>Mentor&apos;s page</strong> records the Mentor&apos;s speech, and turning it on on the <strong>Mentee&apos;s page</strong> records the Mentee&apos;s speech. It runs continuously with <strong>no time limit</strong> and auto-syncs every 20 seconds. Once saved, <strong>both Mentor &amp; Mentee can read and download both recorded transcriptions</strong> in the <em>Shared Speech Transcription Record</em> card below!
           </div>
 
           {isTranscribing && (
@@ -1719,24 +2124,24 @@ function SessionEditor({
                   display: "inline-block",
                 }}
               />
-              Listening to speech via microphone... Transcribed text is appearing in the Speech Transcription box below. Click &ldquo;Stop &amp; Auto-Save&rdquo; when finished.
+              Listening continuously via microphone (unlimited duration — auto-saving every 20s)... Your spoken words ({isMentor ? pair.mentor.name : pair.mentee.name}) are appearing below. Click &ldquo;Stop &amp; Auto-Save&rdquo; when finished.
             </div>
           )}
 
           <div className="grid">
             <label>
-              Live Meeting Minutes & Decisions / बैठक के मुख्य बिंदु
+              Live Meeting Minutes &amp; Decisions / बैठक के मुख्य बिंदु
               <textarea
                 name="meetingNotes"
                 defaultValue={base.meetingNotes ?? ""}
                 placeholder="Log real-time decisions, technical action points, or customer site takeaways..."
-                rows={3}
+                rows={4}
                 maxLength={20000}
               />
             </label>
 
             <label>
-              Speech Transcription / स्वचालित ट्रांसक्रिप्शन
+              🎙️ Your Speech Transcription ({isMentor ? `Mentor: ${pair.mentor.name}` : `Mentee: ${pair.mentee.name}`}) / आपका ट्रांसक्रिप्शन
               <textarea
                 value={displayedTranscript}
                 onChange={(e) => {
@@ -1748,8 +2153,8 @@ function SessionEditor({
                   setDirty(true);
                   dirtyChanged(record.id, true);
                 }}
-                placeholder="Auto-transcribed speech will be captured here. You can also edit or copy notes."
-                rows={3}
+                placeholder={`Click "Start Auto-Transcribe" to capture ${isMentor ? `${pair.mentor.name}'s (Mentor)` : `${pair.mentee.name}'s (Mentee)`} speech here (unlimited duration), or type/edit directly...`}
+                rows={4}
                 maxLength={20000}
               />
             </label>
@@ -1777,23 +2182,33 @@ function SessionEditor({
               onClick={downloadTranscriptFile}
               style={{ fontSize: 12, padding: "6px 14px" }}
             >
-              ⬇️ Download Transcript (.txt)
+              ⬇️ Download Full Transcript (Mentor + Mentee .txt)
             </button>
             <button
               type="button"
               className="secondary"
               onClick={() => {
                 if (typeof navigator !== "undefined" && navigator.clipboard) {
-                  void navigator.clipboard.writeText(
-                    displayedTranscript || record.transcriptionNotes || "",
-                  );
+                  const mentorSpeech = isMentor
+                    ? displayedTranscript.trim() || parsedSavedTranscript.mentor
+                    : parsedSavedTranscript.mentor;
+                  const menteeSpeech = !isMentor
+                    ? displayedTranscript.trim() ||
+                      parsedSavedTranscript.mentee ||
+                      parsedSavedTranscript.legacy
+                    : parsedSavedTranscript.mentee || parsedSavedTranscript.legacy;
+                  const combinedText = [
+                    `=== Mentor (${pair.mentor.name}) Speech Transcription ===\n${mentorSpeech || "(None recorded yet)"}`,
+                    `=== Mentee (${pair.mentee.name}) Speech Transcription ===\n${menteeSpeech || "(None recorded yet)"}`,
+                  ].join("\n\n");
+                  void navigator.clipboard.writeText(combinedText);
                   setCopiedTranscript(true);
                   setTimeout(() => setCopiedTranscript(false), 2500);
                 }
               }}
               style={{ fontSize: 12, padding: "6px 14px" }}
             >
-              {copiedTranscript ? "✓ Copied Transcript!" : "📋 Copy Transcript"}
+              {copiedTranscript ? "✓ Copied Both Transcripts!" : "📋 Copy Full Transcript"}
             </button>
           </div>
 
@@ -1818,41 +2233,85 @@ function SessionEditor({
             </div>
           )}
 
-          {(record.meetingNotes?.trim() || record.transcriptionNotes?.trim()) && (
-            <div
-              style={{
-                marginTop: 12,
-                padding: "10px 14px",
-                borderRadius: 8,
-                backgroundColor: "#ffffff",
-                border: "1px solid #cbd5e1",
-              }}
-            >
-              <strong style={{ fontSize: 12, color: "#1e293b" }}>
-                📁 Saved Meeting Minutes &amp; Transcript Record (Week {record.weekNumber}):
-              </strong>
-              {record.meetingNotes?.trim() && (
-                <div style={{ marginTop: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>
-                    Saved Meeting Minutes:
-                  </span>
-                  <pre style={{ margin: "2px 0 0", fontSize: 12 }}>
-                    {record.meetingNotes}
-                  </pre>
-                </div>
-              )}
-              {record.transcriptionNotes?.trim() && (
-                <div style={{ marginTop: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>
-                    Saved Speech Transcription:
-                  </span>
-                  <pre style={{ margin: "2px 0 0", fontSize: 12 }}>
-                    {record.transcriptionNotes}
-                  </pre>
-                </div>
-              )}
+          {/* Shared Access Card: Always shows both Mentor & Mentee saved speech transcriptions */}
+          <div
+            style={{
+              marginTop: 12,
+              padding: "12px 14px",
+              borderRadius: 8,
+              backgroundColor: "#ffffff",
+              border: "1px solid #cbd5e1",
+            }}
+          >
+            <strong style={{ fontSize: 12, color: "#1e293b", display: "block", marginBottom: 8 }}>
+              📁 Shared Session Record — Both Mentor &amp; Mentee Speech Transcriptions (Week {record.weekNumber}):
+            </strong>
+
+            {record.meetingNotes?.trim() && (
+              <div style={{ marginBottom: 10, padding: "8px 10px", backgroundColor: "#f8fafc", borderRadius: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>
+                  📝 Saved Meeting Minutes:
+                </span>
+                <pre style={{ margin: "4px 0 0", fontSize: 12, whiteSpace: "pre-wrap" }}>
+                  {record.meetingNotes}
+                </pre>
+              </div>
+            )}
+
+            <div className="grid" style={{ gap: 10 }}>
+              <div
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  backgroundColor: "#f0fdf4",
+                  border: "1px solid #bbf7d0",
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#166534" }}>
+                  🎙️ Mentor&apos;s Recorded Speech ({pair.mentor.name}):
+                </span>
+                <pre
+                  style={{
+                    margin: "4px 0 0",
+                    fontSize: 12,
+                    whiteSpace: "pre-wrap",
+                    color: parsedSavedTranscript.mentor ? "#1e293b" : "#64748b",
+                  }}
+                >
+                  {parsedSavedTranscript.mentor ||
+                    "No Mentor speech transcription saved yet. (Recorded when Mentor turns on Start Auto-Transcribe on the Mentor page and saves.)"}
+                </pre>
+              </div>
+
+              <div
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  backgroundColor: "#eff6ff",
+                  border: "1px solid #bfdbfe",
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#1e40af" }}>
+                  🎙️ Mentee&apos;s Recorded Speech ({pair.mentee.name}):
+                </span>
+                <pre
+                  style={{
+                    margin: "4px 0 0",
+                    fontSize: 12,
+                    whiteSpace: "pre-wrap",
+                    color:
+                      parsedSavedTranscript.mentee || parsedSavedTranscript.legacy
+                        ? "#1e293b"
+                        : "#64748b",
+                  }}
+                >
+                  {parsedSavedTranscript.mentee ||
+                    parsedSavedTranscript.legacy ||
+                    "No Mentee speech transcription saved yet. (Recorded when Mentee turns on Start Auto-Transcribe on the Mentee page and saves.)"}
+                </pre>
+              </div>
             </div>
-          )}
+          </div>
         </section>
       </fieldset>
 
@@ -1871,7 +2330,7 @@ function SessionEditor({
                 setDirty(false);
                 dirtyChanged(record.id, false);
                 setBase(record);
-                const savedTranscript = record.transcriptionNotes || "";
+                const savedTranscript = mySavedTranscript || "";
                 transcriptionRef.current = savedTranscript;
                 interimRef.current = "";
                 setTranscriptionDraft(savedTranscript);
@@ -2243,6 +2702,12 @@ export default function MentoringSpace() {
     (s) => s.status === "COMPLETED",
   ).length;
   const progressPct = Math.round((completedSessionsCount / 12) * 100);
+  const firstPendingWeek =
+    pair.sessions
+      .slice()
+      .sort((a, b) => a.weekNumber - b.weekNumber)
+      .find((s) => s.status !== "COMPLETED" && s.status !== "MISSED")
+      ?.weekNumber ?? 12;
 
   const renderAcceptanceBanner = () => (
     <div
@@ -2476,9 +2941,11 @@ export default function MentoringSpace() {
       {/* 12-Week Roadmap Bar */}
       <div className="module-tab-list" role="tablist" aria-label="Programme weeks">
         {Array.from({ length: 12 }, (_, i) => i + 1).map((w) => {
-          const isDone =
-            pair.sessions.find((s) => s.weekNumber === w)?.status ===
-            "COMPLETED";
+          const s = pair.sessions.find((sess) => sess.weekNumber === w);
+          const isDone = s?.status === "COMPLETED";
+          const isMissed = s?.status === "MISSED";
+          const isLocked =
+            w > firstPendingWeek && !isDone && !isMissed;
           return (
             <button
               key={w}
@@ -2489,12 +2956,33 @@ export default function MentoringSpace() {
                 week === w ? " module-tab-active" : ""
               }`}
               onClick={() => setWeek(w)}
+              title={
+                isLocked
+                  ? `Week ${w} is locked until Week ${firstPendingWeek} is Completed or Missed`
+                  : isMissed
+                    ? `Week ${w} was marked as Missed`
+                    : isDone
+                      ? `Week ${w} Completed`
+                      : `Active Week ${w}`
+              }
             >
               Week {w}
               {isDone && (
                 <span className="module-tab-status" aria-label="completed">
                   {" "}
                   ✓
+                </span>
+              )}
+              {isMissed && (
+                <span className="module-tab-status" aria-label="missed">
+                  {" "}
+                  ⚠️
+                </span>
+              )}
+              {isLocked && (
+                <span className="module-tab-status" aria-label="locked">
+                  {" "}
+                  🔒
                 </span>
               )}
             </button>
@@ -2544,6 +3032,7 @@ export default function MentoringSpace() {
               userCode={user.employeeCode}
               userRole={user.role}
               blocked={blocked}
+              firstPendingWeek={firstPendingWeek}
               send={send}
               dirtyChanged={dirtyChanged}
               onAdvanceWeek={(nextWeek) => {
