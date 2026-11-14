@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
@@ -106,7 +106,7 @@ type MatchSuggestion = {
   };
 };
 
-type AdminTab = "matching" | "relationships" | "roster" | "journals";
+type AdminTab = "matching" | "relationships" | "tracker" | "roster" | "journals";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -125,6 +125,24 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<AdminTab>("matching");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [rosterRoleFilter, setRosterRoleFilter] = useState<string>("ALL");
+  const [trackerWeekFilter, setTrackerWeekFilter] = useState<string>("ACTIVE");
+  const [trackerStatusFilter, setTrackerStatusFilter] = useState<string>("ALL");
+  const [sendingReminders, setSendingReminders] = useState(false);
+  const [reminderReport, setReminderReport] = useState<{
+    totalPendingPairs: number;
+    emailsSent: number;
+    emailsSimulated: number;
+    emailsFailed: number;
+    pendingPairs: Array<{
+      pairId: string;
+      mentorName: string;
+      menteeName: string;
+      weekNumber: number;
+      status: string;
+      mentorResult: string;
+      menteeResult: string;
+    }>;
+  } | null>(null);
   const [suggestions, setSuggestions] = useState<MatchSuggestion[] | null>(
     null,
   );
@@ -242,10 +260,10 @@ export default function Dashboard() {
       setMessage(
         json.message ||
           (json.status === "ACTIVE"
-            ? "✓ Saved Confirmation: Pairing accepted and activated! All 12 weekly sessions are now unlocked."
+            ? "âœ“ Saved Confirmation: Pairing accepted and activated! All 12 weekly sessions are now unlocked."
             : json.status === "PENDING_ACCEPTANCE"
-              ? "✓ Saved Confirmation: Your pairing acceptance has been recorded! Waiting for your counterpart to accept."
-              : "✓ Saved Confirmation: Changes saved successfully."),
+              ? "âœ“ Saved Confirmation: Your pairing acceptance has been recorded! Waiting for your counterpart to accept."
+              : "âœ“ Saved Confirmation: Changes saved successfully."),
       );
       if (
         path.endsWith("/respond") &&
@@ -255,8 +273,8 @@ export default function Dashboard() {
         const isActive = json.status === "ACTIVE";
         setDashboardNextStepPrompt({
           title: isActive
-            ? "🎉 Pairing Active — 12-Week Sessions Unlocked!"
-            : "✅ Pairing Invitation Accepted!",
+            ? "ðŸŽ‰ Pairing Active â€” 12-Week Sessions Unlocked!"
+            : "âœ… Pairing Invitation Accepted!",
           subtitle: "Here is what you need to do next:",
           steps: isActive
             ? [
@@ -374,7 +392,7 @@ export default function Dashboard() {
           : "Young Engineer (Mentee)";
       const onboardingUrl = `${origin}/onboarding?emp=${encodeURIComponent(rec.employeeCode)}`;
       const loginUrl = `${origin}/login?emp=${encodeURIComponent(rec.employeeCode)}`;
-      const subject = `[Margdarshan] You Have Been Added as ${rec.role === "MENTOR" ? "a Mentor" : "a Mentee"} — Login & Complete Your Profile`;
+      const subject = `[Margdarshan] You Have Been Added as ${rec.role === "MENTOR" ? "a Mentor" : "a Mentee"} â€” Login & Complete Your Profile`;
       const body = [
         `Dear ${rec.name},`,
         "",
@@ -398,7 +416,7 @@ export default function Dashboard() {
     const bccList = recipients.map((r) => r.email).join(",");
     const loginUrl = `${origin}/login`;
     const subject =
-      "[Margdarshan] You Have Been Added as a Mentor / Mentee — Login & Complete Your Profile";
+      "[Margdarshan] You Have Been Added as a Mentor / Mentee â€” Login & Complete Your Profile";
     const body = [
       "Dear Colleague,",
       "",
@@ -466,7 +484,7 @@ export default function Dashboard() {
   }
 
   if (loading || !user) {
-    return <main className="container">Checking sign-in…</main>;
+    return <main className="container">Checking sign-inâ€¦</main>;
   }
 
   const admin = user.role === "ADMIN";
@@ -512,7 +530,7 @@ export default function Dashboard() {
     ? (
         surveys.reduce((sum, s) => sum + s.growthRating, 0) / surveys.length
       ).toFixed(1)
-    : "—";
+    : "â€”";
 
   const activePairsCount = pairs.filter((p) => p.status === "ACTIVE").length;
   const proposedPairsCount = pairs.filter((p) =>
@@ -649,7 +667,7 @@ export default function Dashboard() {
         <StatTile
           icon={Users}
           value={activePairsCount}
-          label={admin ? "Active coaching pairs · View" : "Active coaching pairs"}
+          label={admin ? "Active coaching pairs Â· View" : "Active coaching pairs"}
           tone={toneAt(0)}
           onClick={
             admin
@@ -664,7 +682,7 @@ export default function Dashboard() {
         <StatTile
           icon={CheckCircle2}
           value={completedSessionsCount}
-          label={admin ? "Completed sessions · View" : "Completed sessions"}
+          label={admin ? "Completed sessions Â· View" : "Completed sessions"}
           tone={toneAt(1)}
           onClick={
             admin
@@ -747,7 +765,7 @@ export default function Dashboard() {
                 }`}
               >
                 <strong>{item.value}</strong>
-                <span>{item.label} →</span>
+                <span>{item.label} â†’</span>
               </button>
             ))}
           </div>
@@ -763,7 +781,7 @@ export default function Dashboard() {
               }
             >
               {reviewsOutstanding.length} active relationship(s) have no saved
-              review yet →
+              review yet â†’
             </button>
           )}
         </section>
@@ -802,7 +820,7 @@ export default function Dashboard() {
                 ? "Share your career goals, availability, and DISC style so you can be matched."
                 : nextAction
                   ? `Next action due: ${nextAction.title}`
-                  : `${currentCompletedCount} of 12 weeks completed · ${
+                  : `${currentCompletedCount} of 12 weeks completed Â· ${
                       data?.actionItems?.length ?? 0
                     } open action(s)`}
             </span>
@@ -844,6 +862,16 @@ export default function Dashboard() {
             >
               <Users size={16} />
               <span>Coaching Relationships ({pairs.length})</span>
+            </button>
+            <button
+              type="button"
+              className={`tab-button${
+                activeTab === "tracker" ? " active" : ""
+              }`}
+              onClick={() => setActiveTab("tracker")}
+            >
+              <TrendingUp size={16} />
+              <span>Weekly Tracker &amp; Reminders</span>
             </button>
             <button
               type="button"
@@ -903,7 +931,7 @@ export default function Dashboard() {
                       <Mail size={16} />
                       <span>
                         {busy
-                          ? "Sending Emails…"
+                          ? "Sending Emailsâ€¦"
                           : "Broadcast All Invites via Email"}
                       </span>
                     </button>
@@ -937,7 +965,7 @@ export default function Dashboard() {
                     <Sparkles size={16} />
                     <span>
                       {loadingSuggestions
-                        ? "Comparing profiles…"
+                        ? "Comparing profilesâ€¦"
                         : "Preview recommendations"}
                     </span>
                   </button>
@@ -981,8 +1009,8 @@ export default function Dashboard() {
                                   {(s.matchScore * 100).toFixed(0)}% Match
                                 </span>
                                 <span className="badge">
-                                  DISC: {s.mentor.discStyle || "—"} ↔{" "}
-                                  {s.mentee.discStyle || "—"}
+                                  DISC: {s.mentor.discStyle || "â€”"} â†”{" "}
+                                  {s.mentee.discStyle || "â€”"}
                                 </span>
                               </div>
                               <div className="form-row" style={{ margin: "0.6rem 0" }}>
@@ -1019,7 +1047,7 @@ export default function Dashboard() {
                                     ])
                                   }
                                 >
-                                  Create draft →
+                                  Create draft â†’
                                 </button>
                               </div>
                             </div>
@@ -1068,13 +1096,13 @@ export default function Dashboard() {
                         Mentor
                         <select name="mentorCode" required defaultValue="">
                           <option value="" disabled>
-                            Choose Mentor…
+                            Choose Mentorâ€¦
                           </option>
                           {roster
                             .filter((e) => e.role === "MENTOR")
                             .map((e) => (
                               <option key={e.employeeCode} value={e.employeeCode}>
-                                {e.name} (#{e.employeeCode}) · Capacity:{" "}
+                                {e.name} (#{e.employeeCode}) Â· Capacity:{" "}
                                 {e.mentorCapacity}
                               </option>
                             ))}
@@ -1084,13 +1112,13 @@ export default function Dashboard() {
                         Mentee
                         <select name="menteeCode" required defaultValue="">
                           <option value="" disabled>
-                            Choose Mentee…
+                            Choose Menteeâ€¦
                           </option>
                           {roster
                             .filter((e) => e.role === "MENTEE")
                             .map((e) => (
                               <option key={e.employeeCode} value={e.employeeCode}>
-                                {e.name} (#{e.employeeCode}) · {e.department}
+                                {e.name} (#{e.employeeCode}) Â· {e.department}
                               </option>
                             ))}
                         </select>
@@ -1183,10 +1211,10 @@ export default function Dashboard() {
                               {p.status}
                             </span>
                             <span className="badge">
-                              Mentor: {p.mentorAcceptedAt ? "✓ Accepted" : "⏳ Pending"}
+                              Mentor: {p.mentorAcceptedAt ? "âœ“ Accepted" : "â³ Pending"}
                             </span>
                             <span className="badge">
-                              Mentee: {p.menteeAcceptedAt ? "✓ Accepted" : "⏳ Pending"}
+                              Mentee: {p.menteeAcceptedAt ? "âœ“ Accepted" : "â³ Pending"}
                             </span>
                           </div>
                           <p style={{ margin: "0.4rem 0" }}>
@@ -1249,7 +1277,7 @@ export default function Dashboard() {
                                 fontSize: "0.8rem",
                               }}
                             >
-                              View Space →
+                              View Space â†’
                             </Link>
                           </div>
                           {actionSection === `pair-${p.id}` && message && (
@@ -1284,7 +1312,7 @@ export default function Dashboard() {
               <div className="employee-search">
                 <input
                   type="search"
-                  placeholder="Search mentor, mentee, or status…"
+                  placeholder="Search mentor, mentee, or statusâ€¦"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -1343,7 +1371,7 @@ export default function Dashboard() {
                         >
                           <span className="tile-category">
                             {p.status}
-                            {p.isOffRecord ? " · OFF RECORD" : ""}
+                            {p.isOffRecord ? " Â· OFF RECORD" : ""}
                           </span>
                           <span className="tile-initial" aria-hidden="true">
                             {p.mentor.name.charAt(0).toUpperCase()}
@@ -1354,7 +1382,7 @@ export default function Dashboard() {
                             {p.mentor.name} (Mentor) &amp; {p.mentee.name} (Mentee)
                           </h3>
                           <p className="muted">
-                            Mentor: {p.mentor.department} · Mentee:{" "}
+                            Mentor: {p.mentor.department} Â· Mentee:{" "}
                             {p.mentee.department}
                           </p>
                           <p className="muted">
@@ -1408,6 +1436,7 @@ export default function Dashboard() {
             </section>
           )}
 
+
           {/* TAB 3: EMPLOYEE ROSTER */}
           {activeTab === "roster" && (
             <div className="employees-layout">
@@ -1446,7 +1475,7 @@ export default function Dashboard() {
                     >
                       <Copy size={16} />
                       <span>
-                        {copiedAll ? "✓ All Links Copied!" : "Copy All Links"}
+                        {copiedAll ? "âœ“ All Links Copied!" : "Copy All Links"}
                       </span>
                     </button>
                   </div>
@@ -1454,7 +1483,7 @@ export default function Dashboard() {
                 <div className="employee-search">
                   <input
                     type="search"
-                    placeholder="Search by name, employee code, e-mail, department or designation…"
+                    placeholder="Search by name, employee code, e-mail, department or designationâ€¦"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -1520,7 +1549,7 @@ export default function Dashboard() {
                                   <strong>{e.name}</strong>
                                   <br />
                                   <span className="muted">
-                                    {e.employeeCode} · {e.email}
+                                    {e.employeeCode} Â· {e.email}
                                   </span>
                                 </div>
                               </div>
@@ -1550,18 +1579,18 @@ export default function Dashboard() {
                               <span className="muted">{e.department}</span>
                             </td>
                             <td>
-                              {e.highestQualification || "—"}
+                              {e.highestQualification || "â€”"}
                               {e.location && (
                                 <>
                                   <br />
-                                  <span className="muted">📍 {e.location}</span>
+                                  <span className="muted">ðŸ“ {e.location}</span>
                                 </>
                               )}
                             </td>
                             <td>
                               {e.role === "MENTOR"
                                 ? `${e.mentorCapacity} mentees`
-                                : "—"}
+                                : "â€”"}
                             </td>
                             <td>
                               {e.role === "MENTOR" || e.role === "MENTEE" ? (
@@ -1610,7 +1639,7 @@ export default function Dashboard() {
                                   >
                                     <Mail size={13} />
                                     <span>
-                                      {isSending ? "Sending…" : "Send Invite"}
+                                      {isSending ? "Sendingâ€¦" : "Send Invite"}
                                     </span>
                                   </button>
                                 </div>
@@ -1837,6 +1866,439 @@ export default function Dashboard() {
               )}
             </section>
           )}
+
+          {/* TAB 5: WEEKLY TRACKER, REPORT EXPORT & EMAIL REMINDERS */}
+          {activeTab === "tracker" && (() => {
+            const activePairs = pairs.filter((p) => p.status === "ACTIVE");
+            const selectedWeekNum =
+              trackerWeekFilter === "ACTIVE" ? null : Number(trackerWeekFilter);
+
+            const trackerRows = activePairs.map((p) => {
+              const sortedSessions = p.sessions
+                .slice()
+                .sort((a, b) => a.weekNumber - b.weekNumber);
+              const completedCount = sortedSessions.filter(
+                (s) => s.status === "COMPLETED",
+              ).length;
+              const missedCount = sortedSessions.filter(
+                (s) => s.status === "MISSED",
+              ).length;
+              const activeWeekSession =
+                sortedSessions.find(
+                  (s) => s.status !== "COMPLETED" && s.status !== "MISSED",
+                ) ?? sortedSessions[sortedSessions.length - 1];
+              const targetSession = selectedWeekNum
+                ? sortedSessions.find((s) => s.weekNumber === selectedWeekNum)
+                : activeWeekSession;
+
+              let targetStatus = "PENDING";
+              if (targetSession?.status === "COMPLETED") targetStatus = "COMPLETED";
+              else if (targetSession?.status === "MISSED") targetStatus = "MISSED";
+              else if (targetSession?.scheduledTime) targetStatus = "SCHEDULED";
+
+              return {
+                pair: p,
+                sortedSessions,
+                completedCount,
+                missedCount,
+                activeWeekNumber: activeWeekSession?.weekNumber ?? 12,
+                targetSession,
+                targetStatus,
+              };
+            });
+
+            const filteredTrackerRows = trackerRows.filter((r) => {
+              if (trackerStatusFilter !== "ALL" && r.targetStatus !== trackerStatusFilter) {
+                return false;
+              }
+              if (search.trim()) {
+                const q = search.toLowerCase();
+                return (
+                  r.pair.mentor.name.toLowerCase().includes(q) ||
+                  r.pair.mentee.name.toLowerCase().includes(q) ||
+                  r.pair.mentor.department.toLowerCase().includes(q) ||
+                  r.pair.mentee.department.toLowerCase().includes(q)
+                );
+              }
+              return true;
+            });
+
+            const kpiCompleted = trackerRows.filter(
+              (r) => r.targetStatus === "COMPLETED",
+            ).length;
+            const kpiScheduled = trackerRows.filter(
+              (r) => r.targetStatus === "SCHEDULED",
+            ).length;
+            const kpiPending = trackerRows.filter(
+              (r) => r.targetStatus === "PENDING",
+            ).length;
+            const kpiMissed = trackerRows.filter(
+              (r) => r.targetStatus === "MISSED",
+            ).length;
+
+            const exportWeeklyCsv = () => {
+              const headers = [
+                "Mentor Name",
+                "Mentor Email",
+                "Mentor Dept",
+                "Mentee Name",
+                "Mentee Email",
+                "Mentee Dept",
+                "Pair Status",
+                "Active Week",
+                "Completed Weeks",
+                "Missed Weeks",
+                "Completion %",
+                ...Array.from({ length: 12 }, (_, i) => `Week ${i + 1}`),
+              ];
+              const esc = (v: string | number) =>
+                `"${String(v ?? "").replace(/"/g, '""')}"`;
+
+              const csvLines = [
+                headers.map(esc).join(","),
+                ...filteredTrackerRows.map((r) => {
+                  const pct = Math.round((r.completedCount / 12) * 100);
+                  const weekCells = Array.from({ length: 12 }, (_, idx) => {
+                    const s = r.sortedSessions.find(
+                      (sess) => sess.weekNumber === idx + 1,
+                    );
+                    if (!s) return "Not Created";
+                    if (s.status === "COMPLETED") return "COMPLETED";
+                    if (s.status === "MISSED") return "MISSED";
+                    if (s.scheduledTime) {
+                      return `SCHEDULED (${new Date(s.scheduledTime).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })})`;
+                    }
+                    return "NOT SCHEDULED (PENDING)";
+                  });
+                  return [
+                    r.pair.mentor.name,
+                    r.pair.mentor.email,
+                    r.pair.mentor.department,
+                    r.pair.mentee.name,
+                    r.pair.mentee.email,
+                    r.pair.mentee.department,
+                    r.pair.status,
+                    `Week ${r.activeWeekNumber}`,
+                    r.completedCount,
+                    r.missedCount,
+                    `${pct}%`,
+                    ...weekCells,
+                  ]
+                    .map(esc)
+                    .join(",");
+                }),
+              ];
+
+              const blob = new Blob([csvLines.join("\r\n")], {
+                type: "text/csv;charset=utf-8;",
+              });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `Margdarshan-Weekly-Tracker-${new Date().toISOString().slice(0, 10)}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            };
+
+            const triggerWeeklyReminders = async () => {
+              setSendingReminders(true);
+              setError("");
+              setMessage("");
+              setReminderReport(null);
+              try {
+                const res = await fetch("/api/admin/weekly-reminders", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    weekNumber: selectedWeekNum ?? undefined,
+                  }),
+                });
+                const json = await res.json();
+                if (!res.ok) {
+                  throw new Error(json.error || "Failed to send weekly reminders.");
+                }
+                setReminderReport(json);
+                setMessage(
+                  `Weekly reminder batch complete: ${json.totalPendingPairs} incomplete pair(s) notified (${json.emailsSent} sent, ${json.emailsSimulated} simulated, ${json.emailsFailed} failed).`,
+                );
+              } catch (e) {
+                setError(
+                  e instanceof Error
+                    ? e.message
+                    : "Failed to send weekly reminders.",
+                );
+              } finally {
+                setSendingReminders(false);
+              }
+            };
+
+            return (
+              <section className="card">
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "1rem",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  <div>
+                    <h2 style={{ margin: 0 }}>
+                      ðŸ“Š 12-Week Programme Tracker, Report &amp; Email Reminders
+                    </h2>
+                    <p className="muted" style={{ margin: "4px 0 0 0" }}>
+                      Monitor week-by-week progress across all active mentoring pairs, export spreadsheet reports, and send weekly reminder emails to incomplete pairs.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={exportWeeklyCsv}
+                    >
+                      â¬‡ï¸ Export Weekly Report (.csv)
+                    </button>
+                    <button
+                      type="button"
+                      disabled={sendingReminders}
+                      onClick={() => void triggerWeeklyReminders()}
+                      style={{
+                        backgroundColor: "#2563eb",
+                        color: "#ffffff",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <Mail size={16} />
+                      <span>
+                        {sendingReminders
+                          ? "Sending Weekly Reminders..."
+                          : selectedWeekNum
+                            ? `Send Week ${selectedWeekNum} Reminders`
+                            : "Send Weekly Email Reminders (Incomplete Pairs)"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Summary KPI Strip */}
+                <div
+                  className="stat-strip"
+                  style={{ marginBottom: "1rem", display: "flex", flexWrap: "wrap", gap: "0.75rem" }}
+                >
+                  <div className="stat-chip">
+                    <strong>{activePairs.length}</strong>
+                    <span>Active Pairs</span>
+                  </div>
+                  <div className="stat-chip" style={{ borderColor: "#86efac", backgroundColor: "#f0fdf4" }}>
+                    <strong style={{ color: "#166534" }}>{kpiCompleted}</strong>
+                    <span style={{ color: "#166534" }}>Completed</span>
+                  </div>
+                  <div className="stat-chip" style={{ borderColor: "#93c5fd", backgroundColor: "#eff6ff" }}>
+                    <strong style={{ color: "#1e40af" }}>{kpiScheduled}</strong>
+                    <span style={{ color: "#1e40af" }}>Scheduled (Pending)</span>
+                  </div>
+                  <div className="stat-chip stat-chip-alert">
+                    <strong>{kpiPending}</strong>
+                    <span>Not Scheduled</span>
+                  </div>
+                  <div className="stat-chip" style={{ borderColor: "#fcd34d", backgroundColor: "#fffbeb" }}>
+                    <strong style={{ color: "#92400e" }}>{kpiMissed}</strong>
+                    <span style={{ color: "#92400e" }}>Missed</span>
+                  </div>
+                </div>
+
+                {/* Reminder Delivery Report */}
+                {reminderReport && (
+                  <div
+                    className="record"
+                    style={{
+                      backgroundColor: "#f0fdf4",
+                      borderColor: "#86efac",
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    <strong style={{ color: "#166534" }}>
+                      âœ“ Weekly Reminder Email Summary: {reminderReport.totalPendingPairs} incomplete pair(s) Â· {reminderReport.emailsSent} email(s) sent Â· {reminderReport.emailsSimulated} simulated Â· {reminderReport.emailsFailed} failed
+                    </strong>
+                    {reminderReport.pendingPairs.length > 0 && (
+                      <ul style={{ margin: "6px 0 0 0", paddingLeft: "1.2rem", fontSize: "0.85rem" }}>
+                        {reminderReport.pendingPairs.map((item) => (
+                          <li key={item.pairId}>
+                            <strong>{item.mentorName}</strong> (Mentor: {item.mentorResult}) &amp;{" "}
+                            <strong>{item.menteeName}</strong> (Mentee: {item.menteeResult}) â€” Week {item.weekNumber} ({item.status})
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {/* Filters */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "0.75rem",
+                    marginBottom: "1rem",
+                    alignItems: "center",
+                  }}
+                >
+                  <label style={{ margin: 0, fontSize: "0.85rem" }}>
+                    Track Week:
+                    <select
+                      value={trackerWeekFilter}
+                      onChange={(e) => setTrackerWeekFilter(e.target.value)}
+                      style={{ marginLeft: "0.4rem" }}
+                    >
+                      <option value="ACTIVE">Current Active Week (Per Pair)</option>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((w) => (
+                        <option key={w} value={String(w)}>
+                          Week {w}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ margin: 0, fontSize: "0.85rem" }}>
+                    Status Filter:
+                    <select
+                      value={trackerStatusFilter}
+                      onChange={(e) => setTrackerStatusFilter(e.target.value)}
+                      style={{ marginLeft: "0.4rem" }}
+                    >
+                      <option value="ALL">All Pairs</option>
+                      <option value="PENDING">Not Scheduled (Pending)</option>
+                      <option value="SCHEDULED">Scheduled (Not Completed)</option>
+                      <option value="COMPLETED">Completed</option>
+                      <option value="MISSED">Missed</option>
+                    </select>
+                  </label>
+
+                  <input
+                    type="search"
+                    placeholder="Filter by Mentor, Mentee, or Department..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    style={{ flex: "1 1 220px", maxWidth: "320px" }}
+                  />
+                </div>
+
+                {/* 12-Week Tracker Matrix Table */}
+                <div className="table-wrap" style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
+                    <thead>
+                      <tr style={{ backgroundColor: "#f8fafc", borderBottom: "2px solid #cbd5e1" }}>
+                        <th style={{ textAlign: "left", padding: "8px" }}>Mentor â†’ Mentee</th>
+                        <th style={{ textAlign: "center", padding: "8px" }}>Active</th>
+                        <th style={{ textAlign: "center", padding: "8px" }}>Progress</th>
+                        {Array.from({ length: 12 }, (_, i) => i + 1).map((w) => (
+                          <th key={w} style={{ textAlign: "center", padding: "6px 4px" }}>
+                            W{w}
+                          </th>
+                        ))}
+                        <th style={{ textAlign: "right", padding: "8px" }}>Space</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredTrackerRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={16} style={{ textAlign: "center", padding: "1.5rem" }} className="muted">
+                            No active mentoring pairs match the selected filter.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredTrackerRows.map((r) => (
+                          <tr
+                            key={r.pair.id}
+                            style={{ borderBottom: "1px solid #e2e8f0" }}
+                          >
+                            <td style={{ padding: "8px" }}>
+                              <strong>{r.pair.mentor.name}</strong> ({r.pair.mentor.department})
+                              <br />
+                              <span className="muted">
+                                â†’ {r.pair.mentee.name} ({r.pair.mentee.department})
+                              </span>
+                            </td>
+                            <td style={{ textAlign: "center", padding: "8px", fontWeight: 700 }}>
+                              W{r.activeWeekNumber}
+                            </td>
+                            <td style={{ textAlign: "center", padding: "8px", fontWeight: 700 }}>
+                              {r.completedCount}/12
+                            </td>
+                            {Array.from({ length: 12 }, (_, idx) => idx + 1).map((w) => {
+                              const s = r.sortedSessions.find(
+                                (sess) => sess.weekNumber === w,
+                              );
+                              let symbol = "â€”";
+                              let bg = "#f8fafc";
+                              let color = "#94a3b8";
+                              let title = `Week ${w}: Locked / Not started`;
+                              if (s?.status === "COMPLETED") {
+                                symbol = "âœ“";
+                                bg = "#dcfce7";
+                                color = "#166534";
+                                title = `Week ${w}: Completed`;
+                              } else if (s?.status === "MISSED") {
+                                symbol = "âš ï¸";
+                                bg = "#fef3c7";
+                                color = "#92400e";
+                                title = `Week ${w}: Missed`;
+                              } else if (s?.scheduledTime) {
+                                symbol = "ðŸ“…";
+                                bg = "#dbeafe";
+                                color = "#1e40af";
+                                title = `Week ${w}: Scheduled for ${new Date(s.scheduledTime).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`;
+                              } else if (w === r.activeWeekNumber) {
+                                symbol = "â³";
+                                bg = "#fee2e2";
+                                color = "#b91c1c";
+                                title = `Week ${w}: Active & Not Scheduled (Pending)`;
+                              }
+                              return (
+                                <td
+                                  key={w}
+                                  title={title}
+                                  style={{
+                                    textAlign: "center",
+                                    padding: "6px 4px",
+                                    backgroundColor: bg,
+                                    color,
+                                    fontWeight: 700,
+                                    borderRadius: 4,
+                                  }}
+                                >
+                                  {symbol}
+                                </td>
+                              );
+                            })}
+                            <td style={{ textAlign: "right", padding: "8px" }}>
+                              <Link
+                                href={`/space/${r.pair.id}`}
+                                className="button secondary"
+                                style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+                              >
+                                Open
+                              </Link>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <p className="muted" style={{ fontSize: "0.78rem", marginTop: "0.75rem" }}>
+                  Legend: âœ“ Completed Â· ðŸ“… Scheduled (Pending Completion) Â· â³ Active &amp; Not Scheduled Â· âš ï¸ Missed Â· â€” Locked Future Week.
+                  <br />
+                  Automated Cron Endpoint: <code>GET /api/admin/weekly-reminders</code> with <code>CRON_SECRET</code> header/query for scheduled weekly email reminders.
+                </p>
+              </section>
+            );
+          })()}
         </div>
       ) : (
         /* ========================================================================= */
@@ -1896,12 +2358,12 @@ export default function Dashboard() {
                           {p.mentor.name} (Mentor) &amp; {p.mentee.name} (Mentee)
                         </h3>
                         <p className="muted">
-                          Counterpart: <strong>{partner.name}</strong> ·{" "}
-                          {partner.designation} · {partner.department}
+                          Counterpart: <strong>{partner.name}</strong> Â·{" "}
+                          {partner.designation} Â· {partner.department}
                         </p>
                         <div className="badge-row" style={{ marginTop: "0.25rem" }}>
                           {partner.location && (
-                            <span className="badge">📍 {partner.location}</span>
+                            <span className="badge">ðŸ“ {partner.location}</span>
                           )}
                           {partner.discStyle && (
                             <span className="badge">
@@ -1920,7 +2382,7 @@ export default function Dashboard() {
                             }}
                           >
                             <strong style={{ color: "#92400e", fontSize: "0.85rem" }}>
-                              🔔 Pairing Invitation — Action Required
+                              ðŸ”” Pairing Invitation â€” Action Required
                             </strong>
                             <p
                               className="muted"
@@ -1928,11 +2390,11 @@ export default function Dashboard() {
                             >
                               Mentor ({p.mentor.name}):{" "}
                               <strong>
-                                {p.mentorAcceptedAt ? "✓ Accepted" : "⏳ Pending"}
+                                {p.mentorAcceptedAt ? "âœ“ Accepted" : "â³ Pending"}
                               </strong>{" "}
-                              · Mentee ({p.mentee.name}):{" "}
+                              Â· Mentee ({p.mentee.name}):{" "}
                               <strong>
-                                {p.menteeAcceptedAt ? "✓ Accepted" : "⏳ Pending"}
+                                {p.menteeAcceptedAt ? "âœ“ Accepted" : "â³ Pending"}
                               </strong>
                             </p>
                             {!hasUserAccepted ? (
@@ -1956,7 +2418,7 @@ export default function Dashboard() {
                                     fontSize: "0.82rem",
                                   }}
                                 >
-                                  ✓ Accept Pairing Invitation / स्वीकार करें
+                                  âœ“ Accept Pairing Invitation / à¤¸à¥à¤µà¥€à¤•à¤¾à¤° à¤•à¤°à¥‡à¤‚
                                 </button>
                                 <button
                                   type="button"
@@ -1982,7 +2444,7 @@ export default function Dashboard() {
                                   fontSize: "0.8rem",
                                 }}
                               >
-                                ✓ You have accepted this invitation. Waiting for
+                                âœ“ You have accepted this invitation. Waiting for
                                 your counterpart to accept.
                               </p>
                             )}
@@ -2013,12 +2475,12 @@ export default function Dashboard() {
                               className="button"
                               style={{ padding: "0.45rem 0.85rem", fontSize: "0.82rem" }}
                             >
-                              Open Mentoring Space →
+                              Open Mentoring Space â†’
                             </Link>
                             <span
                               className={`status-pill status-${p.status.toLowerCase()}`}
                             >
-                              {p.status} · {completedCount}/12 weeks
+                              {p.status} Â· {completedCount}/12 weeks
                             </span>
                           </div>
                           <ProgressRing
@@ -2180,7 +2642,7 @@ export default function Dashboard() {
               >
                 <Copy size={15} />
                 <span>
-                  {copiedAll ? "✓ All Links Copied!" : "📋 Copy All Links"}
+                  {copiedAll ? "âœ“ All Links Copied!" : "ðŸ“‹ Copy All Links"}
                 </span>
               </button>
             </div>
@@ -2235,7 +2697,7 @@ export default function Dashboard() {
                           <span className="muted">#{emp.employeeCode}</span>
                         </div>
                         <div className="muted" style={{ fontSize: "0.8rem" }}>
-                          {emp.email} · {emp.designation}
+                          {emp.email} Â· {emp.designation}
                         </div>
                         <div
                           style={{
@@ -2282,7 +2744,7 @@ export default function Dashboard() {
                           }
                         >
                           <Mail size={14} />
-                          <span>{isSending ? "Sending…" : "Send Email"}</span>
+                          <span>{isSending ? "Sendingâ€¦" : "Send Email"}</span>
                         </button>
                         <a
                           href={candidateUrl}
@@ -2348,7 +2810,7 @@ export default function Dashboard() {
                   <Mail size={16} />
                   <span>
                     {busy
-                      ? "Sending Emails…"
+                      ? "Sending Emailsâ€¦"
                       : broadcastRoleFilter === "ALL"
                         ? "Send All Invites via noreply@rdc.in"
                         : `Send to All ${broadcastRoleFilter}S via noreply@rdc.in`}
@@ -2435,10 +2897,10 @@ export default function Dashboard() {
                           }}
                         >
                           <div>
-                            <strong>{emp.name}</strong> ({emp.employeeCode}) ·{" "}
+                            <strong>{emp.name}</strong> ({emp.employeeCode}) Â·{" "}
                             <span className="badge">{emp.role}</span>
                             <div className="muted">
-                              {emp.designation} · {emp.department}
+                              {emp.designation} Â· {emp.department}
                             </div>
                             <div className="badge-row" style={{ marginTop: "0.35rem" }}>
                               {missing.map((m) => (
@@ -2460,7 +2922,7 @@ export default function Dashboard() {
                               setDetailModal(null);
                             }}
                           >
-                            Inspect in Roster →
+                            Inspect in Roster â†’
                           </button>
                         </div>
                       </div>
@@ -2488,7 +2950,7 @@ export default function Dashboard() {
                         <div>
                           <strong>{mentee.name}</strong> ({mentee.employeeCode})
                           <div className="muted">
-                            {mentee.designation} · {mentee.department}
+                            {mentee.designation} Â· {mentee.department}
                           </div>
                         </div>
                         <button
@@ -2499,7 +2961,7 @@ export default function Dashboard() {
                             void fetchMatchSuggestions();
                           }}
                         >
-                          Find Mentor Match →
+                          Find Mentor Match â†’
                         </button>
                       </div>
                     </div>
@@ -2519,7 +2981,7 @@ export default function Dashboard() {
                     {proposedList.map((p) => (
                       <div key={p.id} className="record" style={{ margin: 0 }}>
                         <strong>{p.mentor.name}</strong> (Mentor) with{" "}
-                        <strong>{p.mentee.name}</strong> (Mentee) ·{" "}
+                        <strong>{p.mentee.name}</strong> (Mentee) Â·{" "}
                         <span className="status-pill status-proposed">
                           {p.status}
                         </span>
@@ -2556,7 +3018,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <Link className="button" href={"/space/" + p.id}>
-                          Open Space →
+                          Open Space â†’
                         </Link>
                       </div>
                     </div>
@@ -2577,7 +3039,7 @@ export default function Dashboard() {
                       <div key={act.id} className="record" style={{ margin: 0 }}>
                         <strong>{act.title}</strong>
                         <div className="muted">
-                          Assigned to: {owner?.name || act.employeeCode} · Due:{" "}
+                          Assigned to: {owner?.name || act.employeeCode} Â· Due:{" "}
                           {new Date(act.dueDate).toLocaleDateString("en-IN", {
                             timeZone: "Asia/Kolkata",
                           })}
@@ -2620,7 +3082,7 @@ export default function Dashboard() {
                                 "Participant"}
                             </strong>
                             <span className="badge">
-                              ★ {surveyItem.growthRating} / 5
+                              â˜… {surveyItem.growthRating} / 5
                             </span>
                           </div>
                           {surveyItem.feedbackText && (
@@ -2664,7 +3126,7 @@ export default function Dashboard() {
                               </div>
                             </div>
                             <Link className="button" href={"/space/" + p.id}>
-                              Open Space →
+                              Open Space â†’
                             </Link>
                           </div>
                         </div>
@@ -2695,9 +3157,9 @@ export default function Dashboard() {
                           }}
                         >
                           <div>
-                            <strong>Week {s.weekNumber} Session</strong> ·{" "}
+                            <strong>Week {s.weekNumber} Session</strong> Â·{" "}
                             <span className="status-pill status-completed">
-                              ✓ Completed
+                              âœ“ Completed
                             </span>
                             <div className="muted">
                               {p.mentor.name} (Mentor) with {p.mentee.name} (Mentee)
@@ -2707,7 +3169,7 @@ export default function Dashboard() {
                             className="button secondary"
                             href={"/space/" + p.id}
                           >
-                            Inspect Record →
+                            Inspect Record â†’
                           </Link>
                         </div>
                       </div>
@@ -2793,7 +3255,7 @@ export default function Dashboard() {
                   cursor: "pointer",
                 }}
               >
-                ✓ OK, Proceed
+                âœ“ OK, Proceed
               </button>
             </div>
           </div>
@@ -2838,7 +3300,7 @@ export default function Dashboard() {
               setMessage("");
             }}
           >
-            ✕
+            âœ•
           </button>
         </div>
       )}

@@ -429,3 +429,92 @@ export async function sendSessionCompletedFeedbackEmail({
   });
 }
 
+/**
+ * Send weekly session completion reminder email to participants with pending weekly sessions
+ */
+export async function sendWeeklyReminderEmail({
+  to,
+  name,
+  roleLabel,
+  counterpartName,
+  pairId,
+  employeeCode,
+  weekNumber,
+  weekTheme,
+  sessionStatusLabel,
+  scheduledTimeText,
+  completedCount,
+  customAppUrl,
+}: {
+  to: string;
+  name: string;
+  roleLabel: 'Mentor' | 'Mentee';
+  counterpartName: string;
+  pairId: string;
+  employeeCode: string;
+  weekNumber: number;
+  weekTheme: string;
+  sessionStatusLabel: string;
+  scheduledTimeText?: string | null;
+  completedCount: number;
+  customAppUrl?: string;
+}) {
+  const baseUrl = getAppUrl(customAppUrl);
+  const workspaceUrl = `${baseUrl}/space/${encodeURIComponent(pairId)}?emp=${encodeURIComponent(employeeCode)}`;
+
+  const subject = `[Margdarshan Reminder] Week ${weekNumber} Mentoring Session Pending (${counterpartName})`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <div style="background-color: #0f172a; padding: 16px; border-radius: 6px; text-align: center; margin-bottom: 20px;">
+        <h2 style="color: #ffffff; margin: 0; font-size: 20px;">Margdarshan Weekly Session Reminder</h2>
+        <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 12px;">RDC Concrete (India) Limited</p>
+      </div>
+
+      <p>Dear <strong>${name}</strong> (${roleLabel}),</p>
+
+      <p>This is your weekly reminder that <strong>Week ${weekNumber}: ${weekTheme}</strong> with your mentoring counterpart <strong>${counterpartName}</strong> is currently <strong>${sessionStatusLabel}</strong>.</p>
+
+      <div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 16px; margin: 18px 0; border-radius: 4px;">
+        <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #92400e;">Current Progress: ${completedCount} of 12 Weeks Completed</p>
+        <p style="margin: 0; font-size: 13px; color: #78350f;">
+          <strong>Active Week:</strong> Week ${weekNumber} &mdash; ${weekTheme}<br/>
+          <strong>Status:</strong> ${sessionStatusLabel}${scheduledTimeText ? `<br/><strong>Scheduled Time:</strong> ${scheduledTimeText}` : ''}
+        </p>
+      </div>
+
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 16px; margin: 16px 0; border-radius: 6px;">
+        <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: bold; color: #0f172a;">Steps to Complete Week ${weekNumber}:</p>
+        <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #334155;">
+          <li>Save the <strong>Meeting Date &amp; Time</strong> in Meeting Logistics.</li>
+          <li>Click <strong>Join / Launch Video Meeting</strong> and hold your session (use Auto-Transcribe if desired).</li>
+          <li>Complete the <strong>Mentee Q&amp;A</strong> and <strong>Mentor Feedback &amp; Guidance</strong>.</li>
+          <li>Click <strong>Mark Week as Completed</strong> (or record a genuine reason if Missed).</li>
+        </ol>
+      </div>
+
+      <div style="text-align: center; margin: 26px 0;">
+        <a href="${workspaceUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 26px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">
+          Open Week ${weekNumber} Mentoring Space &rarr;
+        </a>
+      </div>
+
+      <p style="font-size: 12px; color: #64748b;">
+        Direct link: <a href="${workspaceUrl}" style="color: #2563eb;">${workspaceUrl}</a>
+      </p>
+
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+
+      <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
+        Sent automatically by Margdarshan System &bull; noreply@rdc.in
+      </p>
+    </div>
+  `;
+
+  return deliverMail({
+    to,
+    subject,
+    html,
+    label: `Weekly Reminder Email (${name}, Week ${weekNumber})`,
+  });
+}
+

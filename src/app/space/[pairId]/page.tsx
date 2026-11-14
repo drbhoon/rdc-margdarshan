@@ -228,6 +228,10 @@ function SessionEditor({
   const [transcriptionDraft, setTranscriptionDraft] = useState(
     mySavedTranscript || "",
   );
+  const [meetingNotesDraft, setMeetingNotesDraft] = useState(
+    record.meetingNotes || "",
+  );
+  const [summarizingMinutes, setSummarizingMinutes] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [copiedTranscript, setCopiedTranscript] = useState(false);
   const [localMeetingJoined, setLocalMeetingJoined] = useState(
@@ -294,6 +298,9 @@ function SessionEditor({
       transcriptionRef.current = mySavedTranscript;
       setTranscriptionDraft(mySavedTranscript);
     }
+    if ((record.meetingNotes || "") !== meetingNotesDraft) {
+      setMeetingNotesDraft(record.meetingNotes || "");
+    }
   }
 
   useEffect(() => {
@@ -309,6 +316,7 @@ function SessionEditor({
       transcriptionRef.current = initialNotes;
       interimRef.current = "";
       setTranscriptionDraft(initialNotes);
+      setMeetingNotesDraft(record.meetingNotes || "");
       setInterimTranscript("");
       setLocalMeetingJoined(Boolean(record.isRecordingConsentGranted));
       form.current?.reset();
@@ -321,12 +329,17 @@ function SessionEditor({
         transcriptionRef.current = mySavedTranscript;
         setTranscriptionDraft(mySavedTranscript);
       }
+      if ((record.meetingNotes || "") !== meetingNotesDraft) {
+        setMeetingNotesDraft(record.meetingNotes || "");
+      }
     }
   }, [
     base,
     dirty,
     mySavedTranscript,
+    meetingNotesDraft,
     record.id,
+    record.meetingNotes,
     record.isRecordingConsentGranted,
   ]);
 
@@ -365,6 +378,66 @@ function SessionEditor({
       });
     } catch {
       // ignore transient network blip during background auto-sync
+    }
+  };
+
+  // Generate structured Live Meeting Minutes & Decisions from recorded Mentor/Mentee speech & Q&A
+  const generateMinutesFromSpeech = async (autoTriggered = false) => {
+    setSummarizingMinutes(true);
+    try {
+      const liveOwnSpeech =
+        (transcriptionRef.current || transcriptionDraft || "").trim();
+      const mentorSpeech = isMentor
+        ? liveOwnSpeech || parsedSavedTranscript.mentor
+        : parsedSavedTranscript.mentor;
+      const menteeSpeech = !isMentor
+        ? liveOwnSpeech ||
+          parsedSavedTranscript.mentee ||
+          parsedSavedTranscript.legacy
+        : parsedSavedTranscript.mentee || parsedSavedTranscript.legacy;
+
+      const res = await fetch(
+        `/api/pair/${pair.id}/session/${record.id}/summarize`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mentorTranscription: mentorSpeech,
+            menteeTranscription: menteeSpeech,
+          }),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok) {
+        if (!autoTriggered) {
+          setEditorFeedback({
+            section: "minutes",
+            type: "error",
+            text: `⚠️ ${json.error || "Unable to generate meeting minutes."}`,
+          });
+        }
+        return;
+      }
+      if (json.meetingNotes) {
+        setMeetingNotesDraft(json.meetingNotes);
+        setEditorFeedback({
+          section: "minutes",
+          type: "success",
+          text: autoTriggered
+            ? "✓ Saved Confirmation: Speech transcription saved & Live Meeting Minutes & Decisions generated automatically!"
+            : "✓ Live Meeting Minutes & Decisions generated and saved from speech transcription!",
+        });
+      }
+    } catch {
+      if (!autoTriggered) {
+        setEditorFeedback({
+          section: "minutes",
+          type: "error",
+          text: "⚠️ Failed to generate minutes from speech. Please try again.",
+        });
+      }
+    } finally {
+      setSummarizingMinutes(false);
     }
   };
 
@@ -418,6 +491,9 @@ function SessionEditor({
         "minutes",
         transcriptionRef.current,
       );
+      if (transcriptionRef.current.trim() && !meetingNotesDraft.trim()) {
+        await generateMinutesFromSpeech(true);
+      }
       return;
     }
 
@@ -911,8 +987,9 @@ function SessionEditor({
     const data = new FormData(form.current);
     const payload: Record<string, unknown> = { version: record.version };
 
-    if (data.get("meetingNotes") !== null) {
-      payload.meetingNotes = String(data.get("meetingNotes") ?? "");
+    if (data.get("meetingNotes") !== null || meetingNotesDraft !== undefined) {
+      payload.meetingNotes =
+        meetingNotesDraft ?? String(data.get("meetingNotes") ?? "");
     }
     if (record.recordingUrl) {
       payload.recordingUrl = record.recordingUrl;
@@ -2133,8 +2210,13 @@ function SessionEditor({
               Live Meeting Minutes &amp; Decisions / बैठक के मुख्य बिंदु
               <textarea
                 name="meetingNotes"
-                defaultValue={base.meetingNotes ?? ""}
-                placeholder="Log real-time decisions, technical action points, or customer site takeaways..."
+                value={meetingNotesDraft}
+                onChange={(e) => {
+                  setMeetingNotesDraft(e.target.value);
+                  setDirty(true);
+                  dirtyChanged(record.id, true);
+                }}
+                placeholder="Minutes & decisions auto-generate when you stop voice transcription (or click 'Generate Minutes from Speech' below), or you can type/edit directly..."
                 rows={4}
                 maxLength={20000}
               />
@@ -2175,6 +2257,25 @@ function SessionEditor({
               style={{ fontSize: 12, padding: "6px 14px" }}
             >
               💾 Save Meeting Notes &amp; Transcription
+            </button>
+            <button
+              type="button"
+              disabled={summarizingMinutes}
+              onClick={() => void generateMinutesFromSpeech(false)}
+              style={{
+                fontSize: 12,
+                padding: "6px 14px",
+                backgroundColor: "#0f766e",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: 6,
+                fontWeight: 700,
+                cursor: summarizingMinutes ? "wait" : "pointer",
+              }}
+            >
+              {summarizingMinutes
+                ? "⏳ Generating Minutes..."
+                : "✨ Generate Minutes & Decisions from Speech"}
             </button>
             <button
               type="button"
@@ -2334,6 +2435,7 @@ function SessionEditor({
                 transcriptionRef.current = savedTranscript;
                 interimRef.current = "";
                 setTranscriptionDraft(savedTranscript);
+                setMeetingNotesDraft(record.meetingNotes || "");
                 setInterimTranscript("");
                 form.current?.reset();
               }
