@@ -217,7 +217,10 @@ export const POST = protectedRoute(
             signal: AbortSignal.timeout(20000),
             body: JSON.stringify({
               contents: [{ role: "user", parts: [{ text: prompt }] }],
-              generationConfig: { maxOutputTokens: 700 },
+              generationConfig: {
+                maxOutputTokens: 2048,
+                thinkingConfig: { thinkingBudget: 0 },
+              },
             }),
           },
         );

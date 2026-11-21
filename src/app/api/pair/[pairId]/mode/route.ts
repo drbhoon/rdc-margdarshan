@@ -27,6 +27,20 @@ export const PUT = protectedRoute(async function PUT(
           409,
           "The workspace changed. Refresh before changing mode.",
         );
+
+      const reqWeekNumber = Number(body.weekNumber);
+      if (Number.isInteger(reqWeekNumber) && reqWeekNumber >= 1 && reqWeekNumber <= 12) {
+        const weekSess = await tx.session.findFirst({
+          where: { pairId, weekNumber: reqWeekNumber },
+          select: { status: true },
+        });
+        if (weekSess && (weekSess.status === "COMPLETED" || weekSess.status === "MISSED")) {
+          throw new AccessError(
+            403,
+            `Off-record / On-record mode is locked for completed Week ${reqWeekNumber}. Only the Mentor can re-open this week for rework.`,
+          );
+        }
+      }
       let data;
       if (body.action === "PAUSE")
         data = { isOffRecord: true, resumeMentor: false, resumeMentee: false };

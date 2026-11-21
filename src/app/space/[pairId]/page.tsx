@@ -232,6 +232,7 @@ function SessionEditor({
     record.meetingNotes || "",
   );
   const [summarizingMinutes, setSummarizingMinutes] = useState(false);
+  const [speechLang, setSpeechLang] = useState<"en-IN" | "hi-IN" | "en-US">("en-IN");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [copiedTranscript, setCopiedTranscript] = useState(false);
   const [localMeetingJoined, setLocalMeetingJoined] = useState(
@@ -268,7 +269,11 @@ function SessionEditor({
     record.weekNumber > firstPendingWeek &&
     record.status !== "COMPLETED" &&
     record.status !== "MISSED";
-  const effectiveBlocked = blocked || isFutureLockedWeek;
+  const isCompletedOrMissedLocked =
+    record.status === "COMPLETED" || record.status === "MISSED";
+  const isReworkActive = record.status === "RESCHEDULED";
+  const effectiveBlocked =
+    blocked || isFutureLockedWeek || isCompletedOrMissedLocked;
   const hasJoinedMeeting = Boolean(
     record.isRecordingConsentGranted || localMeetingJoined,
   );
@@ -288,9 +293,16 @@ function SessionEditor({
       record.postSessionReflectionMentor?.trim(),
   );
 
-  const isMenteeBoxLocked = !isMentee || isMenteeQaRecorded || isFutureLockedWeek;
+  const isMenteeBoxLocked =
+    !isMentee ||
+    (isMenteeQaRecorded && !isReworkActive) ||
+    isFutureLockedWeek ||
+    isCompletedOrMissedLocked;
   const isMentorBoxLocked =
-    !isMenteeQaRecorded || isMentorQaRecorded || isFutureLockedWeek;
+    !isMenteeQaRecorded ||
+    (isMentorQaRecorded && !isReworkActive) ||
+    isFutureLockedWeek ||
+    isCompletedOrMissedLocked;
 
   if (!dirty && !isTranscribing && base.version !== record.version) {
     setBase(record);
@@ -524,7 +536,7 @@ function SessionEditor({
         const rec = new SpeechRec();
         rec.continuous = true;
         rec.interimResults = true;
-        rec.lang = "en-IN";
+        rec.lang = speechLang;
 
         rec.onresult = (event: any) => {
           let finalChunk = "";
@@ -561,12 +573,27 @@ function SessionEditor({
           console.warn("Speech recognition segment notice:", event.error);
           if (
             event.error === "not-allowed" ||
-            event.error === "service-not-allowed"
+            event.error === "service-not-allowed" ||
+            event.error === "audio-capture"
           ) {
             isTranscribingRef.current = false;
             setIsTranscribing(false);
             if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
             if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current);
+            setEditorFeedback({
+              section: "minutes",
+              type: "error",
+              text:
+                event.error === "audio-capture"
+                  ? "⚠️ No microphone detected. Please connect/unmute your microphone and try again."
+                  : "⚠️ Microphone permission blocked in browser. Please allow microphone access in your browser address bar and try again.",
+            });
+          } else if (event.error === "network") {
+            setEditorFeedback({
+              section: "minutes",
+              type: "error",
+              text: "⚠️ Browser speech recognition network blip — retrying automatically...",
+            });
           }
         };
 
@@ -689,11 +716,19 @@ function SessionEditor({
     });
   };
 
-  // 1-Click Toggle Session Status (With Sequential Week + Meeting Joined + Q&A Checks)
+  // 1-Click Toggle Session Status (With Sequential Week + Meeting Joined + Q&A Checks + Mentor-Only Rework)
   const toggleSessionCompletion = async () => {
     const isReopening =
       record.status === "COMPLETED" || record.status === "MISSED";
-    const nextStatus = isReopening ? "SCHEDULED" : "COMPLETED";
+    if (isReopening && !isMentor) {
+      setEditorFeedback({
+        section: "status",
+        type: "error",
+        text: "🔒 Only the Mentor can re-open a completed week for rework.",
+      });
+      return;
+    }
+    const nextStatus = isReopening ? "RESCHEDULED" : "COMPLETED";
 
     if (!isReopening) {
       if (isFutureLockedWeek) {
@@ -1207,6 +1242,20 @@ function SessionEditor({
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+          {isReworkActive && (
+            <span
+              className="pill"
+              style={{
+                backgroundColor: "#fef3c7",
+                color: "#92400e",
+                fontWeight: 700,
+                fontSize: 12,
+              }}
+            >
+              🔄 Rework Mode Active (Open for Mentor &amp; Mentee)
+            </span>
+          )}
+
           {record.status !== "COMPLETED" &&
             record.status !== "MISSED" &&
             !isFutureLockedWeek && (
@@ -1230,36 +1279,58 @@ function SessionEditor({
               </button>
             )}
 
-          <button
-            type="button"
-            disabled={
-              blocked ||
-              (isFutureLockedWeek &&
-                record.status !== "COMPLETED" &&
-                record.status !== "MISSED")
-            }
-            onClick={toggleSessionCompletion}
-            style={{
-              backgroundColor:
-                record.status === "COMPLETED" || record.status === "MISSED"
-                  ? "#e2e8f0"
-                  : "#16a34a",
-              color:
-                record.status === "COMPLETED" || record.status === "MISSED"
-                  ? "#334155"
-                  : "#ffffff",
-              fontWeight: 700,
-              padding: "8px 16px",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: 13,
-              border: "none",
-            }}
-          >
-            {record.status === "COMPLETED" || record.status === "MISSED"
-              ? "Re-open Week / पुनः खोलें"
-              : "✓ Mark Week as Completed / सत्र पूर्ण हुआ"}
-          </button>
+          {isCompletedOrMissedLocked ? (
+            isMentor ? (
+              <button
+                type="button"
+                disabled={blocked}
+                onClick={toggleSessionCompletion}
+                style={{
+                  backgroundColor: "#f59e0b",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  border: "none",
+                }}
+              >
+                🔄 Re-open Week for Rework / पुनः खोलें
+              </button>
+            ) : (
+              <span
+                className="pill"
+                style={{
+                  backgroundColor: "#e2e8f0",
+                  color: "#334155",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  padding: "6px 12px",
+                }}
+              >
+                🔒 Locked (Completed) — Only Mentor can start rework
+              </span>
+            )
+          ) : (
+            <button
+              type="button"
+              disabled={blocked || isFutureLockedWeek}
+              onClick={toggleSessionCompletion}
+              style={{
+                backgroundColor: "#16a34a",
+                color: "#ffffff",
+                fontWeight: 700,
+                padding: "8px 16px",
+                borderRadius: "8px",
+                cursor: isFutureLockedWeek ? "not-allowed" : "pointer",
+                fontSize: 13,
+                border: "none",
+              }}
+            >
+              ✓ Mark Week as Completed / सत्र पूर्ण हुआ
+            </button>
+          )}
         </div>
 
         {showMissedPrompt && (
@@ -2140,28 +2211,49 @@ function SessionEditor({
                 Your microphone records <strong>{isMentor ? `Mentor (${pair.mentor.name})` : `Mentee (${pair.mentee.name})`}</strong> speech on your page without time limits (auto-saves every 20s). After saving, <strong>both Mentor &amp; Mentee can view and download both speech transcriptions</strong> below.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={isFutureLockedWeek}
-              onClick={() => void toggleSpeechRecognition()}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "6px 12px",
-                borderRadius: 8,
-                fontSize: 12,
-                fontWeight: 700,
-                backgroundColor: isTranscribing ? "#ef4444" : "#4f46e5",
-                color: "#ffffff",
-                border: "none",
-                cursor: isFutureLockedWeek ? "not-allowed" : "pointer",
-              }}
-            >
-              {isTranscribing
-                ? "⏹️ Stop & Auto-Save Voice Transcribe"
-                : `🎙️ Start Auto-Transcribe (${isMentor ? "Mentor Speech" : "Mentee Speech"})`}
-            </button>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+              <select
+                aria-label="Speech transcription language"
+                value={speechLang}
+                disabled={isTranscribing || effectiveBlocked}
+                onChange={(e) =>
+                  setSpeechLang(e.target.value as "en-IN" | "hi-IN" | "en-US")
+                }
+                style={{
+                  fontSize: 12,
+                  padding: "5px 8px",
+                  borderRadius: 6,
+                  border: "1px solid #cbd5e1",
+                  backgroundColor: "#ffffff",
+                }}
+              >
+                <option value="en-IN">🌐 English (India)</option>
+                <option value="hi-IN">🌐 हिन्दी (Hindi)</option>
+                <option value="en-US">🌐 English (US)</option>
+              </select>
+              <button
+                type="button"
+                disabled={effectiveBlocked}
+                onClick={() => void toggleSpeechRecognition()}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  backgroundColor: isTranscribing ? "#ef4444" : "#4f46e5",
+                  color: "#ffffff",
+                  border: "none",
+                  cursor: effectiveBlocked ? "not-allowed" : "pointer",
+                }}
+              >
+                {isTranscribing
+                  ? "⏹️ Stop & Auto-Save Voice Transcribe"
+                  : `🎙️ Start Auto-Transcribe (${isMentor ? "Mentor Speech" : "Mentee Speech"})`}
+              </button>
+            </div>
           </div>
 
           <div
@@ -2415,6 +2507,61 @@ function SessionEditor({
           </div>
         </section>
       </fieldset>
+
+      {/* Always-Enabled Download & Copy Transcript Bar (Works even when Week is Completed / Locked) */}
+      <div
+        className="record"
+        style={{
+          marginTop: 12,
+          backgroundColor: "#f8fafc",
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>
+          📥 Export / Download Week {record.weekNumber} Minutes &amp; Dual Speech Transcript:
+        </span>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={downloadTranscriptFile}
+            style={{ fontSize: 12, padding: "6px 14px", cursor: "pointer" }}
+          >
+            ⬇️ Download Full Transcript (Mentor + Mentee .txt)
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              if (typeof navigator !== "undefined" && navigator.clipboard) {
+                const mentorSpeech = isMentor
+                  ? displayedTranscript.trim() || parsedSavedTranscript.mentor
+                  : parsedSavedTranscript.mentor;
+                const menteeSpeech = !isMentor
+                  ? displayedTranscript.trim() ||
+                    parsedSavedTranscript.mentee ||
+                    parsedSavedTranscript.legacy
+                  : parsedSavedTranscript.mentee || parsedSavedTranscript.legacy;
+                const combinedText = [
+                  `=== Live Meeting Minutes & Decisions (Week ${record.weekNumber}) ===\n${meetingNotesDraft.trim() || record.meetingNotes?.trim() || "(None recorded)"}`,
+                  `=== Mentor (${pair.mentor.name}) Speech Transcription ===\n${mentorSpeech || "(None recorded yet)"}`,
+                  `=== Mentee (${pair.mentee.name}) Speech Transcription ===\n${menteeSpeech || "(None recorded yet)"}`,
+                ].join("\n\n");
+                void navigator.clipboard.writeText(combinedText);
+                setCopiedTranscript(true);
+                setTimeout(() => setCopiedTranscript(false), 2500);
+              }
+            }}
+            style={{ fontSize: 12, padding: "6px 14px", cursor: "pointer" }}
+          >
+            {copiedTranscript ? "✓ Copied Both Transcripts!" : "📋 Copy Full Transcript"}
+          </button>
+        </div>
+      </div>
 
       {/* Dirty Draft Controls */}
       {dirty && (
@@ -2923,31 +3070,44 @@ export default function MentoringSpace() {
             {completedSessionsCount} of 12 weeks completed
           </span>
         </div>
-        {participant && !ended && (
-          <button
-            type="button"
-            className={pair.isOffRecord ? "secondary" : "danger"}
-            disabled={busy}
-            onClick={() => {
-              if (
-                !pair.isOffRecord &&
-                dirty.current.size &&
-                !window.confirm(
-                  "You have unsaved drafts. Going off record pauses saving; drafts stay in this tab. Continue?",
+        {participant && !ended && (() => {
+          const isCurrentWeekCompleted =
+            session?.status === "COMPLETED" || session?.status === "MISSED";
+          return (
+            <button
+              type="button"
+              className={pair.isOffRecord ? "secondary" : "danger"}
+              disabled={busy || isCurrentWeekCompleted}
+              title={
+                isCurrentWeekCompleted
+                  ? `Off-record / On-record mode is locked while viewing completed Week ${week}. Only the Mentor can re-open this week for rework.`
+                  : undefined
+              }
+              onClick={() => {
+                if (isCurrentWeekCompleted) return;
+                if (
+                  !pair.isOffRecord &&
+                  dirty.current.size &&
+                  !window.confirm(
+                    "You have unsaved drafts. Going off record pauses saving; drafts stay in this tab. Continue?",
+                  )
                 )
-              )
-                return;
-              void send("/mode", "PUT", {
-                action: pair.isOffRecord ? "RESUME" : "PAUSE",
-                version: pair.version,
-              });
-            }}
-          >
-            {pair.isOffRecord
-              ? "Resume recording / सहमति दें"
-              : "Go off record / रिकॉर्ड रोकें"}
-          </button>
-        )}
+                  return;
+                void send("/mode", "PUT", {
+                  action: pair.isOffRecord ? "RESUME" : "PAUSE",
+                  version: pair.version,
+                  weekNumber: week,
+                });
+              }}
+            >
+              {isCurrentWeekCompleted
+                ? `🔒 Off-Record Locked (Week ${week} Completed)`
+                : pair.isOffRecord
+                  ? "Resume recording / सहमति दें"
+                  : "Go off record / रिकॉर्ड रोकें"}
+            </button>
+          );
+        })()}
       </section>
 
       {awaitingAcceptance && renderAcceptanceBanner()}

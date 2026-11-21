@@ -96,8 +96,27 @@ export const PUT = protectedRoute(
         );
 
       const isReopeningWeek =
-        body.status === "SCHEDULED" &&
+        (body.status === "RESCHEDULED" || body.status === "SCHEDULED") &&
         (previous.status === "COMPLETED" || previous.status === "MISSED");
+
+      if (isReopeningWeek) {
+        if (user.employeeCode !== pair.mentorCode && user.role !== "ADMIN") {
+          throw new AccessError(
+            403,
+            "Only the Mentor can re-open a completed or missed week for rework.",
+          );
+        }
+      } else if (
+        previous.status === "COMPLETED" ||
+        previous.status === "MISSED"
+      ) {
+        throw new AccessError(
+          403,
+          `Week ${previous.weekNumber} is ${previous.status} and is locked. Only the Mentor can re-open it for rework.`,
+        );
+      }
+
+      const isReworkMode = previous.status === "RESCHEDULED";
 
       // Sequential Week Restriction: Cannot jump ahead to schedule/complete Week N while an earlier week < N is still pending
       if (previous.weekNumber > 1 && !isReopeningWeek && ! body.markMeetingJoined) {
@@ -157,7 +176,7 @@ export const PUT = protectedRoute(
             "Only the Mentee can enter or submit Mentee Q&A responses.",
           );
         }
-        if (wasMenteeQaRecorded) {
+        if (wasMenteeQaRecorded && !isReworkMode) {
           const isModified = menteeQaKeys.some(
             (k) =>
               body[k] !== undefined &&
@@ -193,7 +212,7 @@ export const PUT = protectedRoute(
             "Mentor comments can only be entered after the Mentee has submitted their Q&A responses.",
           );
         }
-        if (wasMentorQaRecorded) {
+        if (wasMentorQaRecorded && !isReworkMode) {
           const isModified = mentorQaKeys.some(
             (k) =>
               body[k] !== undefined &&
